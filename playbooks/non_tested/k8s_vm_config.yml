@@ -1,0 +1,48 @@
+---
+- name: Configure Kubernetes VMs
+  hosts: k8s_nodes
+  become: true
+  vars:
+    k8s_version: "v1.33"
+  tasks:
+    - name: Update and upgrade packages
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install docker.io
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+
+    - name: Add Kubernetes apt repo
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Add Kubernetes apt key
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Update apt cache after adding Kubernetes repo
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install kubelet, kubeadm, kubectl
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Hold kubelet, kubeadm, kubectl versions
+      ansible.builtin.shell: apt-mark hold kubelet kubeadm kubectl
+
+    - name: Disable swap
+      ansible.builtin.shell: |
+        swapoff -a
+        sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab

@@ -1,0 +1,30 @@
+---
+- name: Generate configuration files from templates
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vault.yml
+  
+  tasks:
+    - name: Create directories to hold generated group vars and inventory files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "../inventory"
+        - "../inventory/group_vars"
+    
+    - name: Generate proxmox group vars from template
+      ansible.builtin.template:
+        src: ../templates/group_vars/proxmox.yml.j2
+        dest: ../inventory/group_vars/proxmox.yml
+        mode: '0644'
+    
+    - name: Generate hosts inventory from template  
+      ansible.builtin.template:
+        src: ../templates/inventory/hosts.ini.j2
+        dest: ../inventory/hosts.ini
+        mode: '0644'
+

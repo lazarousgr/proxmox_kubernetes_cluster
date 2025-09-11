@@ -1,0 +1,60 @@
+---
+- name: Create and configure cloud template in Proxmox
+  hosts: proxmox
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vault.yml
+    - ../inventory/group_vars/proxmox.yml
+
+  tasks:
+    - name: Download cloud image
+      ansible.builtin.shell: wget {{ image_url }}
+      args:
+        chdir: /root
+    
+    - name: Extract filename from URL
+      set_fact:
+        extracted_image_file: "{{ image_url | basename }}"
+
+    - name: Create new VM
+      ansible.builtin.shell: >
+        qm create {{ vault_template_vm_id }} --memory 1024 --core 1 --name {{ template_vm_name }} --net0 virtio,bridge=vmbr0
+    
+    - name: Wait for few seconds till VM is created
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Set machine type to Q35
+      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --machine q35
+
+    - name: Set CPU type to host
+      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --cpu host
+
+    - name: Add serial console
+      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --serial0 socket --vga serial0
+
+    - name: Import disk image to storage
+      ansible.builtin.shell: >
+        qm disk import {{ vault_template_vm_id }} /root/{{ extracted_image_file }} {{ storage }} --format qcow2
+
+    - name: Attach disk as SCSI
+      ansible.builtin.shell: >
+        qm set {{ vault_template_vm_id }} --scsihw virtio-scsi-pci --scsi0 {{ storage }}:vm-{{ vault_template_vm_id }}-disk-0,ssd=1
+
+    - name: Set boot options
+      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --boot c --bootdisk scsi0
+
+    - name: Add cloud-init drive
+      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --ide0 {{ storage }}:cloudinit
+
+    - name: Set cloud-init details
+      ansible.builtin.shell: >
+        qm set {{ vault_template_vm_id }} --ciuser {{ vault_ci_user }} --cipassword {{ vault_ci_password }} --sshkey {{ vault_ci_ssh_public_key_path }} --ipconfig0 ip=dhcp
+
+    - name: Convert VM to template
+      ansible.builtin.shell: qm template {{ vault_template_vm_id }}
+
+    - name: Clean up downloaded cloud image file
+      ansible.builtin.file:
+        path: "/root/{{ extracted_image_file }}"
+        state: absent
