@@ -117,7 +117,7 @@
         msg:
           - "Existing cluster verification:"
           - "{{ existing_cluster_status.stdout_lines }}"
-      when: existing_cluster_status is defined and existing_cluster_status.rc == 0
+      when: existing_cluster_status is defined and existing_cluster_status is not skipped and existing_cluster_status.rc is defined and existing_cluster_status.rc == 0
 
     - name: Display cluster initialization summary
       ansible.builtin.debug:

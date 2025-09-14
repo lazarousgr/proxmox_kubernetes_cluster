@@ -1,0 +1,49 @@
+---
+- name: Restart all Kubernetes VMs
+  hosts: proxmox
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vault.yml
+    - ../inventory/group_vars/proxmox.yml
+
+  tasks:
+    - name: Stop each VM gracefully
+      ansible.builtin.shell: qm stop {{ item.id }}
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      loop_control:
+        label: "Stopping {{ item.name }}"
+      ignore_errors: yes
+
+    - name: Wait for VMs to shutdown completely
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Start each VM
+      ansible.builtin.shell: qm start {{ item.id }}
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      loop_control:
+        label: "Starting {{ item.name }}"
+
+    - name: Wait 5 minutes for VMs to boot and services to start
+      ansible.builtin.pause:
+        minutes: 5
+
+    - name: Verify VMs are accessible via SSH
+      ansible.builtin.command: ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 {{ vault_ci_user }}@{{ item.ip }} "echo 'VM {{ item.name }} is accessible'"
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      loop_control:
+        label: "Checking connectivity to {{ item.name }}"
+      delegate_to: localhost
+      register: vm_connectivity
+      failed_when: false
+
+    - name: Display restart summary
+      ansible.builtin.debug:
+        msg:
+          - "VM Restart Summary:"
+          - "================================================================"
+          - "{{ '✓ ' + item.item.name + ' - Accessible' if item.rc == 0 else '❌ ' + item.item.name + ' - Not accessible' }}"
+      loop: "{{ vm_connectivity.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
