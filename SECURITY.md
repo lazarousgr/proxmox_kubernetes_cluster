@@ -25,7 +25,7 @@ This project implements a comprehensive security strategy using Ansible Vault, t
 ```yaml
 # group_vars/vault.yml
 # Proxmox connection
-vault_proxmox_host: "proxmox.example.com"
+vault_proxmox_host: "proxmox"
 vault_proxmox_user: "root"
 vault_ssh_private_key_path: "/path/to/private/key"
 
@@ -35,13 +35,13 @@ vault_ci_password: "your_secure_password"
 vault_ci_ssh_public_key_path: "/path/to/public/key"
 
 # Infrastructure
-vault_template_vm_id: 9000
+vault_template_vm_id: "your_template_id"
 vault_storage: "your_storage_name"
-vault_disk_size: "30G"
+vault_disk_size: "your_preferred_disk_size"
 
 # VM specifications
 vault_k8s_hosts:
-  - id: 8001
+  - id: disk
     name: "kmaster"
     ip: "192.168.1.41"
     mac: "08:00:27:D5:26:51"
@@ -71,49 +71,6 @@ ansible-vault decrypt group_vars/vault.yml
 
 # Change vault password
 ansible-vault rekey group_vars/vault.yml
-```
-
-### **Running Playbooks with Vault**
-
-```bash
-# Method 1: Prompt for password
-ansible-playbook playbooks/proxmox_k8s_create_vm_template.yml --ask-vault-pass
-
-# Method 2: Password file
-echo "your_vault_password" > .vault_pass
-chmod 600 .vault_pass
-ansible-playbook playbooks/proxmox_k8s_create_vm_template.yml --vault-password-file .vault_pass
-
-# Method 3: Environment variable
-export ANSIBLE_VAULT_PASSWORD_FILE=.vault_pass
-ansible-playbook playbooks/proxmox_k8s_create_vm_template.yml
-```
-
-## 🚫 **Git Security (.gitignore)**
-
-The project automatically excludes sensitive files:
-
-```gitignore
-# Vault and credentials
-group_vars/vault.yml
-.vault_pass
-vault_password.txt
-
-# Generated configurations (contain real data)
-inventory/hosts.ini
-inventory/group_vars/proxmox.yml
-
-# Generation scripts (may contain sensitive logic)
-scripts/*
-
-# SSH keys and certificates
-*.pem
-*.key
-id_*
-!*.pub
-
-# Environment files
-.env*
 ```
 
 ## 🎯 **Deployment Security Strategies**
@@ -185,55 +142,6 @@ git log --all --full-history -- group_vars/vault.yml
 # Check current repository state
 git ls-files | grep -E "(vault|password|key|secret)"
 ```
-
-## 📋 **Security Best Practices**
-
-### **✅ Do:**
-- Use strong, unique vault passwords
-- Store vault passwords in secure password managers
-- Regularly rotate credentials and vault passwords
-- Use different vault passwords for different environments
-- Test decryption before deploying to production
-- Backup encrypted vault files securely
-- Use SSH key authentication instead of passwords where possible
-- Regular security audits of access logs
-
-### **❌ Don't:**
-- Commit unencrypted vault files to Git
-- Share vault passwords through insecure channels
-- Use the same credentials across environments
-- Store vault passwords in code or configuration files
-- Leave decrypted vault files on production systems
-- Use weak or default passwords
-- Grant unnecessary access to vault files
-- Ignore Ansible security warnings
-
-## 🚨 **Incident Response**
-
-### **If Credentials Are Compromised:**
-
-1. **Immediate Actions:**
-   ```bash
-   # Change all affected passwords immediately
-   # Rotate SSH keys
-   # Update vault with new credentials
-   ansible-vault edit group_vars/vault.yml
-   ```
-
-2. **Repository Cleanup (if committed accidentally):**
-   ```bash
-   # Remove sensitive data from Git history
-   git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch group_vars/vault.yml' --prune-empty --tag-name-filter cat -- --all
-   
-   # Force push to remove from remote (DESTRUCTIVE!)
-   git push origin --force --all
-   git push origin --force --tags
-   ```
-
-3. **System Updates:**
-   - Update all affected systems with new credentials
-   - Check access logs for unauthorized access
-   - Review and update security policies
 
 ## 🔧 **Development Workflow Security**
 

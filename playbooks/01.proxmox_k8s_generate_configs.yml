@@ -27,4 +27,10 @@
         src: ../templates/inventory/hosts.ini.j2
         dest: ../inventory/hosts.ini
         mode: '0644'
+        
+    - name: Generate k8s VMs inventory from template
+      ansible.builtin.template:
+        src: ../templates/inventory/k8s_vms.ini.j2
+        dest: ../inventory/k8s_vms.ini
+        mode: '0644'
 

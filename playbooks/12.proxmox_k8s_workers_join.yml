@@ -1,0 +1,132 @@
+---
+- name: Join Worker Nodes to Kubernetes Cluster
+  hosts: k8s_workers
+  gather_facts: true
+  serial: 1
+  vars_files:
+    - ../group_vars/vault.yml
+  become: yes
+
+  tasks:
+    - name: Log worker node join start
+      ansible.builtin.debug:
+        msg: "Joining worker node {{ ansible_hostname | default(inventory_hostname) }} ({{ ansible_default_ipv4.address }}) to Kubernetes cluster"
+
+    - name: Check if node is already part of cluster
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: node_joined
+
+    - name: Log join status check
+      ansible.builtin.debug:
+        msg: "Node status: {{ 'Already joined to cluster' if node_joined.stat.exists else 'Not joined to cluster' }}"
+
+    - name: Read join command from local file
+      ansible.builtin.slurp:
+        src: /tmp/kubeadm-join-command.sh
+      register: join_command_file
+      delegate_to: localhost
+      become: no
+      when: not node_joined.stat.exists
+
+    - name: Extract join command from file content
+      ansible.builtin.set_fact:
+        join_command: "{{ (join_command_file.content | b64decode).split('\n') | select('match', '^kubeadm join.*') | first }}"
+      when: not node_joined.stat.exists and join_command_file is defined
+
+    - name: Log join command details
+      ansible.builtin.debug:
+        msg: "Using saved join command: {{ join_command }}"
+      when: join_command is defined
+
+    - name: Generate fresh join command from master if saved one is invalid
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: fresh_join_command
+      delegate_to: "{{ groups['k8s_masters'][0] }}"
+      when: not node_joined.stat.exists and (join_command is not defined or join_command == "")
+
+    - name: Update join command fact with fresh command
+      ansible.builtin.set_fact:
+        join_command: "{{ fresh_join_command.stdout }}"
+      when: fresh_join_command is defined and fresh_join_command.stdout is defined
+
+    - name: Log fresh join command generation
+      ansible.builtin.debug:
+        msg: "Generated fresh join command (saved one may have expired)"
+      when: fresh_join_command is defined and fresh_join_command.stdout is defined
+
+    - name: Stop kubelet service before joining
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+      when: not node_joined.stat.exists
+
+    - name: Clean up any previous join attempts
+      ansible.builtin.command: kubeadm reset --force
+      when: not node_joined.stat.exists
+      register: kubeadm_reset
+
+    - name: Log cleanup result
+      ansible.builtin.debug:
+        msg: "Node cleanup: {{ 'Completed' if kubeadm_reset.changed else 'Skipped' }}"
+      when: kubeadm_reset is defined
+
+    - name: Join worker node to cluster
+      ansible.builtin.command: "{{ join_command }}"
+      register: join_result
+      when: not node_joined.stat.exists and join_command is defined
+
+    - name: Log join result
+      ansible.builtin.debug:
+        msg: "Node join result: {{ 'Success' if join_result.rc == 0 else 'Failed - ' + join_result.stderr | default('Unknown error') }}"
+      when: join_result is defined
+
+    - name: Start and enable kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+      when: join_result is defined and join_result.rc == 0
+
+    - name: Wait for kubelet to be stable
+      ansible.builtin.pause:
+        seconds: 30
+      when: join_result is defined and join_result.rc == 0
+
+    - name: Verify node join on master
+      ansible.builtin.command: kubectl get node {{ ansible_hostname | default(inventory_hostname) }}
+      environment:
+        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+      register: node_verification
+      delegate_to: "{{ groups['k8s_masters'][0] }}"
+      become_user: "{{ vault_ci_user }}"
+      when: join_result is defined and join_result.rc == 0
+      retries: 5
+      delay: 10
+      until: node_verification.rc == 0
+
+    - name: Log node verification
+      ansible.builtin.debug:
+        msg: 
+          - "Node verification from master:"
+          - "{{ node_verification.stdout_lines }}"
+      when: node_verification is defined and node_verification.rc == 0
+
+    - name: Display worker node join summary
+      ansible.builtin.debug:
+        msg:
+          - "Worker Node Join Summary for {{ ansible_hostname | default(inventory_hostname) }}:"
+          - "================================================================"
+          - "✓ Node: {{ ansible_hostname | default(inventory_hostname) }}"
+          - "✓ IP Address: {{ ansible_default_ipv4.address }}"
+          - "{{ '✓ Successfully joined cluster' if join_result is defined and join_result.rc == 0 else '✓ Already part of cluster' if node_joined.stat.exists else '❌ Failed to join cluster' }}"
+          - "✓ kubelet service running and enabled"
+          - "{{ '✓ Node visible from master' if node_verification is defined and node_verification.rc == 0 else '⚠️  Node verification pending' }}"
+          - "================================================================"
+
+  handlers:
+    - name: Restart kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        enabled: yes

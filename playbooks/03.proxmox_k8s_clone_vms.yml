@@ -2,6 +2,7 @@
 - name: Clone multiple VMs from template in Proxmox (all shell)
   hosts: proxmox
   gather_facts: false
+  serial: 1
   vars_files:
     - ../group_vars/vault.yml
     - ../inventory/group_vars/proxmox.yml
@@ -9,26 +10,26 @@
   tasks:
     - name: Clone VMs from template
       ansible.builtin.shell: qm clone {{ vault_template_vm_id }} {{ item.id }} --name {{ item.name }} --full
-      loop: "{{ vault_k8s_hosts }}"
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
       loop_control:
         label: "Cloning {{ item.name }}"
 
     - name: Increase cores and memory for each clone
       ansible.builtin.shell: qm set {{ item.id }} --cores {{ item.cores }} --memory {{ item.memory }}
-      loop: "{{ vault_k8s_hosts }}"
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
       loop_control:
         label: "Setting CPU and memory for {{ item.name }}"
 
     - name: Resize disk of each clone before first boot
-      ansible.builtin.shell: qm resize {{ item.id }} scsi0 {{ disk_size }}
-      loop: "{{ vault_k8s_hosts }}"
+      ansible.builtin.shell: qm resize {{ item.id }} scsi0 {{ item.disk_size }}
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
       loop_control:
         label: "Resizing disk for {{ item.name }}"
       when: disk_resize_enable | default(false) | bool
 
     - name: Set unique MAC address for each VM
       ansible.builtin.shell: qm set {{ item.id }} --net0 virtio,bridge=vmbr0,macaddr={{ item.mac }}
-      loop: "{{ vault_k8s_hosts }}"
+      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
       loop_control:
         label: "Setting MAC for {{ item.name }}"
 

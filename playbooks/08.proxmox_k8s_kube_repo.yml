@@ -1,0 +1,53 @@
+---
+- name: Prepare cluster for Docker and Kubernetes installation
+  hosts: k8s_cluster
+  serial: 1
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vault.yml
+  become: yes
+
+  tasks:
+    # Installing Kubernetes repository
+    - name: Download Kubernetes GPG key using curl
+      ansible.builtin.command:
+        cmd: curl -fsSL "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key" -o /tmp/kubernetes-release.key
+      args:
+        creates: /tmp/kubernetes-release.key
+      register: k8s_key_download
+      
+    - name: Log Kubernetes key download result
+      ansible.builtin.debug:
+        msg: "Kubernetes GPG key: {{ 'Downloaded' if k8s_key_download.changed else 'Already exists' }}"
+
+    - name: Convert and install Kubernetes GPG key
+      ansible.builtin.shell: |
+        cat /tmp/kubernetes-release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: k8s_gpg_install
+
+    - name: Log GPG key installation
+      ansible.builtin.debug:
+        msg: "GPG key installed: {{ k8s_gpg_install.changed }}"
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /"
+        filename: kubernetes
+        state: present
+      register: k8s_repo_add
+
+    - name: Log repository addition
+      ansible.builtin.debug:
+        msg: "Kubernetes repository added: {{ k8s_repo_add.changed }}"
+
+    - name: Update apt cache after adding Kubernetes repo
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 600
+      register: apt_update_result
+
+    - name: Log apt cache update
+      ansible.builtin.debug:
+        msg: "Apt cache updated. Cache was {{ 'valid' if not apt_update_result.changed else 'refreshed' }}"

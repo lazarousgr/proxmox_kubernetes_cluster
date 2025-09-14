@@ -1,0 +1,110 @@
+---
+- name: Install Kubernetes CNI (Flannel)
+  hosts: k8s_masters[0]
+  gather_facts: true
+  vars_files:
+    - ../group_vars/vault.yml
+  become: no  # Run as regular user since we need kubectl access
+
+  tasks:
+    - name: Log CNI installation start
+      ansible.builtin.debug:
+        msg: "Installing Flannel CNI on {{ ansible_hostname | default(inventory_hostname) }}"
+
+    - name: Check if Flannel is already installed
+      ansible.builtin.command: kubectl get pods -n kube-flannel -l app=flannel
+      environment:
+        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+      register: flannel_check
+      failed_when: false
+      changed_when: false
+
+    - name: Log CNI status check
+      ansible.builtin.debug:
+        msg: "Flannel status: {{ 'Already installed' if flannel_check.rc == 0 and 'flannel' in flannel_check.stdout else 'Not installed' }}"
+
+    - name: Download Flannel manifest using curl
+      ansible.builtin.command:
+        cmd: curl -fsSL https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml -o /tmp/kube-flannel.yml
+      args:
+        creates: /tmp/kube-flannel.yml
+      when: flannel_check.rc != 0 or 'flannel' not in flannel_check.stdout
+      register: flannel_download
+
+    - name: Set Flannel manifest permissions
+      ansible.builtin.file:
+        path: /tmp/kube-flannel.yml
+        mode: '0644'
+      when: flannel_check.rc != 0 or 'flannel' not in flannel_check.stdout
+
+    - name: Log Flannel manifest download
+      ansible.builtin.debug:
+        msg: "Flannel manifest: {{ 'Downloaded' if flannel_download.changed else 'Already exists' }}"
+      when: flannel_download is defined
+
+    - name: Update Flannel CIDR to match cluster configuration
+      ansible.builtin.lineinfile:
+        path: /tmp/kube-flannel.yml
+        regexp: '^\s*"Network":\s*".*"'
+        line: '      "Network": "{{ pod_network_cidr }}",'
+        state: present
+      when: flannel_check.rc != 0 or 'flannel' not in flannel_check.stdout
+
+    - name: Apply Flannel CNI
+      ansible.builtin.command: kubectl apply -f /tmp/kube-flannel.yml
+      environment:
+        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+      when: flannel_check.rc != 0 or 'flannel' not in flannel_check.stdout
+      register: flannel_apply
+
+    - name: Log Flannel application result
+      ansible.builtin.debug:
+        msg: "Flannel CNI: {{ 'Applied successfully' if flannel_apply.changed else 'Already configured' }}"
+      when: flannel_apply is defined
+
+    - name: Wait for Flannel DaemonSet to be ready
+      ansible.builtin.command: kubectl rollout status daemonset/kube-flannel-ds -n kube-flannel --timeout=300s
+      environment:
+        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+      when: flannel_apply is defined and flannel_apply.changed
+      register: flannel_rollout
+
+    - name: Log Flannel rollout status
+      ansible.builtin.debug:
+        msg: "Flannel DaemonSet: {{ 'Ready' if flannel_rollout.rc == 0 else 'Still deploying' }}"
+      when: flannel_rollout is defined
+
+    - name: Verify nodes are ready
+      ansible.builtin.command: kubectl get nodes
+      environment:
+        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+      register: nodes_status
+      retries: 5
+      delay: 30
+      until: "'NotReady' not in nodes_status.stdout"
+
+    - name: Log nodes status
+      ansible.builtin.debug:
+        msg: 
+          - "Cluster nodes status:"
+          - "{{ nodes_status.stdout_lines }}"
+
+    - name: Verify Flannel pods
+      ansible.builtin.command: kubectl get pods -n kube-flannel
+      environment:
+        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+      register: flannel_pods
+
+    - name: Display Flannel installation summary
+      ansible.builtin.debug:
+        msg:
+          - "Flannel CNI Installation Summary:"
+          - "================================================================"
+          - "✓ Flannel CNI installed and configured"
+          - "✓ Pod network CIDR: {{ pod_network_cidr }}"
+          - "✓ Flannel DaemonSet deployed"
+          - "✓ Control plane node ready"
+          - "✓ Cluster ready for worker node joins"
+          - "================================================================"
+          - "Flannel pods status:"
+          - "{{ flannel_pods.stdout_lines }}"

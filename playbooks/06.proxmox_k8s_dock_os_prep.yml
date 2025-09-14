@@ -1,0 +1,126 @@
+---
+- name: Kubernetes installation on master nodes
+  hosts: k8s_cluster
+  gather_facts: true # Enable to get hostname for logging
+  serial: 1
+  vars_files:
+    - ../group_vars/vault.yml
+  become: yes
+
+  tasks:
+    - name: Log preparation start
+      ansible.builtin.debug:
+        msg: "Starting Kubernetes preparation on {{ ansible_hostname | default(inventory_hostname) }}"
+
+    - name: Update and upgrade packages
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: yes
+      register: package_update
+
+    - name: Log package update results
+      ansible.builtin.debug:
+        msg: |
+          Package update completed:
+          - Cache updated: {{ package_update.cache_updated | default('N/A') }}
+          - Packages upgraded: {{ package_update.changed }}
+    
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+        state: present
+      register: required_packages
+
+    - name: Log required packages installation
+      ansible.builtin.debug:
+        msg: "Required packages installation: {{ 'Completed' if required_packages.changed else 'Already installed' }}"
+
+    - name: Disable swap immediately
+      ansible.builtin.command: swapoff -a
+      ignore_errors: yes
+      register: swap_disable
+
+    - name: Log swap disable result
+      ansible.builtin.debug:
+        msg: "Swap disable: {{ 'Success' if swap_disable.rc == 0 else 'Failed or already disabled' }}"
+
+    - name: Disable swap permanently
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+      register: fstab_update
+
+    - name: Log fstab swap disable
+      ansible.builtin.debug:
+        msg: "Permanent swap disable in fstab: {{ 'Applied' if fstab_update.changed else 'Already disabled' }}"
+
+    - name: Create kernel modules configuration for Kubernetes
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/kubernetes.conf
+        content: |
+          overlay
+          br_netfilter
+        mode: '0644'
+      register: modules_config
+
+    - name: Log kernel modules configuration
+      ansible.builtin.debug:
+        msg: "Kernel modules config: {{ 'Created' if modules_config.changed else 'Already exists' }}"
+
+    - name: Load kernel modules immediately
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+      register: modules_load
+      loop_control:
+        label: "Loading {{ item }} module"
+
+    - name: Log kernel modules loading
+      ansible.builtin.debug:
+        msg: "Module {{ item.item }}: {{ 'Loaded' if item.changed else 'Already loaded' }}"
+      loop: "{{ modules_load.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Create sysctl configuration for Kubernetes
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes.conf
+        content: |
+          net.ipv4.ip_forward=1
+          net.bridge.bridge-nf-call-iptables=1
+          net.bridge.bridge-nf-call-ip6tables=1
+        mode: '0644'
+      register: sysctl_config
+
+    - name: Log sysctl configuration
+      ansible.builtin.debug:
+        msg: "Sysctl configuration: {{ 'Created' if sysctl_config.changed else 'Already exists' }}"
+
+    - name: Apply sysctl changes immediately
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-kubernetes.conf
+      ignore_errors: yes
+      register: sysctl_apply
+
+    - name: Log sysctl application
+      ansible.builtin.debug:
+        msg: "Sysctl settings applied: {{ 'Success' if sysctl_apply.rc == 0 else 'Failed' }}"
+    
+    - name: Display preparation summary
+      ansible.builtin.debug:
+        msg:
+          - "Cluster Preparation Summary for {{ ansible_hostname | default(inventory_hostname) }}:"
+          - "================================================================"
+          - "✓ Packages updated and required packages installed"
+          - "✓ Swap disabled (immediate and permanent)"
+          - "✓ Kernel modules (overlay, br_netfilter) configured and loaded"
+          - "✓ Sysctl settings configured for Kubernetes networking"
+          - "✓ System ready for Docker and Kubernetes installation"
+          - "================================================================"

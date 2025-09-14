@@ -1,0 +1,74 @@
+---
+- name: Configure hostnames and host resolution for cluster
+  hosts: k8s_cluster
+  gather_facts: true  # Enable to get current hostname
+  serial: 1
+  vars_files:
+    - ../group_vars/vault.yml
+  become: yes
+
+  tasks:
+    - name: Log current hostname
+      ansible.builtin.debug:
+        msg: "Current hostname: {{ ansible_hostname | default('unknown') }}, Target hostname: {{ inventory_hostname }}"
+
+    - name: Set hostname to match inventory name
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+      register: hostname_change
+
+    - name: Log hostname change result
+      ansible.builtin.debug:
+        msg: "Hostname: {{ 'Changed to ' + inventory_hostname if hostname_change.changed else 'Already set to ' + inventory_hostname }}"
+
+    - name: Update localhost entry in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1'
+        line: "127.0.1.1 {{ inventory_hostname }}"
+        state: present
+      register: localhost_update
+
+    - name: Log localhost /etc/hosts update
+      ansible.builtin.debug:
+        msg: "Localhost entry in /etc/hosts: {{ 'Updated' if localhost_update.changed else 'Already configured' }}"
+
+    - name: Add all cluster nodes to /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^{{ hostvars[item]["ansible_host"] }}\s+{{ item }}'
+        line: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+        state: present
+      loop: "{{ groups['k8s_cluster'] }}"
+      register: cluster_hosts_update
+      loop_control:
+        label: "Adding {{ item }} ({{ hostvars[item]['ansible_host'] }})"
+
+    - name: Log cluster hosts addition
+      ansible.builtin.debug:
+        msg: "Added {{ item.item }} to /etc/hosts: {{ 'Updated' if item.changed else 'Already present' }}"
+      loop: "{{ cluster_hosts_update.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Ensure hostname persists after reboot
+      ansible.builtin.copy:
+        content: "{{ inventory_hostname }}"
+        dest: /etc/hostname
+        mode: '0644'
+      register: hostname_file
+
+    - name: Log hostname file update
+      ansible.builtin.debug:
+        msg: "/etc/hostname: {{ 'Updated' if hostname_file.changed else 'Already configured' }}"
+
+    - name: Display hostname configuration summary
+      ansible.builtin.debug:
+        msg:
+          - "Hostname Configuration Summary for {{ inventory_hostname }}:"
+          - "================================================================"
+          - "✓ Hostname set to: {{ inventory_hostname }}"
+          - "✓ Localhost entry: 127.0.1.1 {{ inventory_hostname }}"
+          - "✓ Cluster nodes added to /etc/hosts:"
+          - "{% for host in groups['k8s_cluster'] %}  - {{ hostvars[host]['ansible_host'] }} {{ host }}{% endfor %}"
+          - "================================================================"

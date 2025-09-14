@@ -1,0 +1,134 @@
+---
+- name: Prepare cluster for Docker and Kubernetes installation
+  hosts: k8s_cluster
+  gather_facts: true  # Enable to get hostname for logging
+  serial: 1
+  vars_files:
+    - ../group_vars/vault.yml
+  become: yes
+
+  tasks:
+    - name: Log Docker installation start
+      ansible.builtin.debug:
+        msg: "Starting Docker installation on {{ ansible_hostname | default(inventory_hostname) }}"
+
+    # Installing Docker repository
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      register: keyrings_dir
+
+    - name: Log keyrings directory creation
+      ansible.builtin.debug:
+        msg: "Keyrings directory: {{ 'Created' if keyrings_dir.changed else 'Already exists' }}"
+
+    - name: Download Docker GPG key using curl
+      ansible.builtin.command: 
+        cmd: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      args:
+        creates: /etc/apt/keyrings/docker.asc
+      register: docker_gpg_key
+
+    - name: Set Docker GPG key permissions
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Log Docker GPG key download
+      ansible.builtin.debug:
+        msg: "Docker GPG key: {{ 'Downloaded' if docker_gpg_key.changed else 'Already exists' }}"
+    - name: Get system architecture
+      ansible.builtin.command: dpkg --print-architecture
+      register: system_arch
+      changed_when: false
+
+    - name: Log system architecture
+      ansible.builtin.debug:
+        msg: "System architecture detected: {{ system_arch.stdout }}"
+
+    - name: Get Ubuntu codename
+      ansible.builtin.shell: . /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+      register: ubuntu_codename
+      changed_when: false
+
+    - name: Log Ubuntu codename
+      ansible.builtin.debug:
+        msg: "Ubuntu codename detected: {{ ubuntu_codename.stdout }}"
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ system_arch.stdout }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ubuntu_codename.stdout }} stable"
+        filename: docker
+        state: present
+      register: docker_repo
+
+    - name: Log Docker repository addition
+      ansible.builtin.debug:
+        msg: "Docker repository: {{ 'Added' if docker_repo.changed else 'Already configured' }}"
+
+    - name: Update cache and install containerd.io
+      ansible.builtin.apt:
+        name: containerd.io
+        update_cache: yes
+        state: present
+      register: containerd_install
+
+    - name: Log containerd installation
+      ansible.builtin.debug:
+        msg: "containerd.io: {{ 'Installed' if containerd_install.changed else 'Already installed' }}"
+
+    - name: Create default configuration for containerd
+      ansible.builtin.shell: |
+        mkdir -p /etc/containerd
+        containerd config default > /etc/containerd/config.toml
+      register: containerd_config_create
+
+    - name: Log containerd config creation
+      ansible.builtin.debug:
+        msg: "containerd default config: {{ 'Generated' if containerd_config_create.changed else 'Updated' }}"
+    
+    - name: Configure containerd for Kubernetes (all settings)
+      ansible.builtin.shell: |
+        # Enable SystemdCgroup
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+        # Update pause image to match kubeadm
+        sed -i 's|sandbox_image = ".*pause.*"|sandbox_image = "registry.k8s.io/pause:3.10"|' /etc/containerd/config.toml
+      register: containerd_config_update
+      notify: Restart containerd
+
+    - name: Verify containerd configuration
+      ansible.builtin.shell: |
+        echo "SystemdCgroup setting:"
+        grep "SystemdCgroup.*true" /etc/containerd/config.toml || echo "NOT FOUND"
+        echo "Pause image setting:"
+        grep "pause:3.10" /etc/containerd/config.toml || echo "NOT FOUND"
+      register: containerd_verification
+
+    - name: Log containerd configuration verification
+      ansible.builtin.debug:
+        msg: "{{ containerd_verification.stdout_lines }}"
+
+    - name: Display Docker installation summary
+      ansible.builtin.debug:
+        msg:
+          - "Docker Installation Summary for {{ ansible_hostname | default(inventory_hostname) }}:"
+          - "================================================================"
+          - "✓ Docker repository configured ({{ system_arch.stdout }}/{{ ubuntu_codename.stdout }})"
+          - "✓ containerd.io installed and configured"
+          - "✓ SystemdCgroup enabled for Kubernetes compatibility"
+          - "✓ containerd service {{ 'will be restarted' if containerd_config_update.changed else 'ready' }}"
+          - "================================================================"
+
+  handlers:
+    - name: Restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+      register: containerd_restart
+
+    - name: Log containerd restart
+      ansible.builtin.debug:
+        msg: "containerd service restarted and enabled successfully"

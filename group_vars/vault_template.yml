@@ -1,0 +1,43 @@
+# Proxmox connection
+vault_proxmox_host: "proxmox.example.com"
+vault_proxmox_user: "admin_user"
+vault_ssh_private_key_path: "/path/to/private/key"
+
+# VM user credentials
+vault_ci_user: "your_username"
+vault_ci_password: "your_password"
+vault_ci_ssh_public_key_path: "/path/to/public/key"
+
+# Template configuration
+vault_template_vm_id: proxmox_vm_id
+
+# Kubernetes cluster configuration
+vault_k8s_masters:
+  - ip: "x.x.x.x"
+    name: "k8s-master-01"
+    id: proxmox_vm_id_for_master_node
+    mac: "xx:xx:xx:xx:xx:xx"
+    memory: 4096
+    cores: 2
+    disk_size: "10G"
+
+vault_k8s_workers:
+  - ip: "x.x.x.x"
+    name: "k8s-worker-01"
+    id: proxmox_vm_id_for_worker_node1
+    mac: "xx:xx:xx:xx:xx:xx"
+    memory: 3072
+    cores: 1
+    disk_size: "10G"
+  - ip: "x.x.x.x"
+    name: "k8s-worker-02"
+    id: proxmox_vm_id_for_worker_node2
+    mac: "xx:xx:xx:xx:xx:xx"
+    memory: 3072
+    cores: 1
+    disk_size: "10G"
+
+# Kubernetes configuration
+kubernetes_version: "1.30"
+pod_network_cidr: "10.244.0.0/16"
+service_subnet: "10.96.0.0/12" # Not used for dev env

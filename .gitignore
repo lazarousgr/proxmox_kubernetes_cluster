@@ -5,12 +5,14 @@ vault_password.txt
 
 # Inventory files with actual credentials/IPs
 inventory/hosts.ini
+inventory/k8s_vms.ini
 inventory/group_vars/proxmox.yml
 group_vars/vault.yml
 
 scripts/*
 
 templates/group_vars/proxmox.yml.shell-template
+templates/inventory/k8s_vms.ini.j2
 
 
 # SSH keys

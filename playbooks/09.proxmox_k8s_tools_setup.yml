@@ -1,0 +1,66 @@
+---
+- name: Initialize Kubernetes Cluster on Control Plane Node
+  hosts: k8s_cluster  # Only run on first master node
+  gather_facts: true
+  serial: 1
+  vars_files:
+    - ../group_vars/vault.yml
+    - ../inventory/group_vars/proxmox.yml
+  become: yes
+
+  tasks:
+    - name: Log cluster initialization start
+      ansible.builtin.debug:
+        msg: "Initializing Kubernetes cluster on {{ ansible_hostname | default(inventory_hostname) }} ({{ ansible_default_ipv4.address }})"
+
+    - name: Install Kubernetes components
+      ansible.builtin.apt:
+        name:
+          - kubelet={{ kubernetes_version }}*
+          - kubeadm={{ kubernetes_version }}*
+          - kubectl={{ kubernetes_version }}*
+        state: present
+      register: k8s_install
+
+    - name: Log Kubernetes installation result
+      ansible.builtin.debug:
+        msg: "Kubernetes components ({{ kubernetes_version }}): {{ 'Installed' if k8s_install.changed else 'Already installed' }}"
+
+    - name: Hold Kubernetes package versions
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+      register: package_hold_result
+      loop_control:
+        label: "Holding {{ item }} package"
+
+    - name: Log package hold results
+      ansible.builtin.debug:
+        msg: "Package {{ item.item }} hold: {{ 'Applied' if item.changed else 'Already held' }}"
+      loop: "{{ package_hold_result.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Start and enable kubelet service
+      ansible.builtin.systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+      register: kubelet_service
+
+    - name: Log kubelet service status
+      ansible.builtin.debug:
+        msg: "kubelet service: {{ 'Started and enabled' if kubelet_service.changed else 'Already running' }}"
+
+    - name: Display cluster initialization summary
+      ansible.builtin.debug:
+        msg:
+          - "Kubernetes Control Plane Setup Summary:"
+          - "================================================================"
+          - "✓ Kubernetes {{ kubernetes_version }} components installed and held"
+          - "✓ kubelet service started and enabled"
+          - "================================================================"

@@ -2,8 +2,11 @@
 
 ## Overview
 
-This repository contains Ansible playbooks to **automate the creation and configuration of a Kubernetes cluster** within a Proxmox environment.  
-It leverages cloud-init for VM provisioning, template-based configuration generation, and supports full lifecycle management from VM creation to Kubernetes installation.
+This repository contains Ansible playbooks to **automate the complete creation and configuration of a dev-ready Kubernetes cluster** within a Proxmox environment. It provides end-to-end automation from VM template creation to a fully configured Kubernetes control plane with worker nodes ready to join.
+
+The project uses a **sequential numbered playbook approach** for clear workflow management, template-based configuration generation, and comprehensive logging.
+
+This project was triggered when I had to set up a local kubernetes env on m proxmox for the 10th time and I realized that this is a pure waste of time and I should automate it end to end.
 
 ---
 
@@ -11,23 +14,28 @@ It leverages cloud-init for VM provisioning, template-based configuration genera
 
 ```
 proxmox_kubernetes_cluster/
-├── playbooks/
-│   ├── proxmox_k8s_create_vm_template.yml    # Create Ubuntu cloud template VM in Proxmox
-│   ├── proxmox_k8s_clone_vms.yml             # Clone multiple VMs from template
-│   ├── proxmox_k8s_generate_configs.yml      # Generate configs from templates
-│   └── k8s_vm_config.yml                     # Configure VMs for Kubernetes
+├── playbooks/                               # Sequential numbered playbooks
+│   ├── 01.proxmox_k8s_generate_configs.yml  # Generate inventory and configs
+│   ├── 02.proxmox_k8s_cloud_template.yml    # Create Ubuntu cloud template
+│   ├── 03.proxmox_k8s_clone_vms.yml         # Clone VMs from template
+│   ├── 04.proxmox_k8s_dock_kube_prep.yml    # System preparation (swap, sysctl, modules)
+│   ├── 05.proxmox_k8s_vms_hostname.yml      # Configure hostnames and /etc/hosts
+│   ├── 06.proxmox_k8s_docker_install.yml    # Install and configure containerd
+│   ├── 07.proxmox_k8s_kube_install.yml      # Install Kubernetes components
+│   └── 08.proxmox_k8s_controlplane_setup.yml # Initialize Kubernetes cluster
 ├── templates/
-│   ├── group_vars/proxmox.yml.j2             # Proxmox variables template
-│   └── inventory/hosts.ini.j2                # Inventory template
+│   ├── group_vars/proxmox.yml.j2            # Proxmox variables template
+│   ├── inventory/hosts.ini.j2               # Proxmox hosts inventory template
+│   └── inventory/k8s_vms.ini.j2             # Kubernetes cluster inventory template
 ├── group_vars/
-│   └── vault.yml                             # Encrypted sensitive variables (gitignored)
-├── inventory/                                # Generated inventory files (gitignored)
-│   ├── hosts.ini                             # Generated from template
-│   └── group_vars/proxmox.yml                # Generated from template
+│   └── vault.yml                            # Encrypted sensitive variables
+├── inventory/                              # Generated inventory files
+│   ├── hosts.ini                           # Generated Proxmox hosts inventory
+│   ├── k8s_vms.ini                         # Generated Kubernetes cluster inventory
+│   └── group_vars/proxmox.yml              # Generated Proxmox variables
 ├── scripts/
-│   ├── generate_configs.py                   # Python config generator
-│   └── generate_configs.sh                   # Shell config generator
-└── setup.sh                                  # Complete setup script
+│   ─── run_playbooks.sh                    # Execute all playbooks 
+└── ansible.cfg                             # Ansible configuration
 ```
 
 ---
@@ -38,65 +46,105 @@ proxmox_kubernetes_cluster/
   Build a cloud-init enabled Ubuntu template for rapid VM provisioning with automatic cleanup.
 
 - 🧬 **VM Cloning with Custom Hardware**  
-  Clone multiple VMs with unique MAC addresses, disk sizes, memory, and CPU configurations.
+  Clone multiple VMs with unique MAC addresses, disk sizes, memory, and CPU configurations as per Kubernetes requirements.
 
-- � **Template-Based Security**  
+- 🔒 **Template-Based Security**  
   All sensitive data (IPs, credentials) stored in encrypted vault, with templates generating actual config files.
 
-- 🎯 **Conditional Operations**  
-  Disk resizing and other operations can be enabled/disabled via configuration flags.
+- 🎯 **System Preparation**  
+  Comprehensive VM preparation including swap disable, kernel modules, sysctl settings for Kubernetes.
 
-- 🏗️ **Kubernetes-Ready Configuration**  
-  Installs Docker, kubelet, kubeadm, kubectl, and disables swap on target VMs.
+- 🏗️ **Complete Kubernetes Installation**  
+  Installs containerd, kubelet, kubeadm, kubectl with proper CRI configuration and version holding.
+
+- 🌐 **Hostname & Network Configuration**  
+  Sets proper hostnames and configures /etc/hosts for all cluster nodes for better name resolution.
+
+- � **Control Plane Initialization**  
+  Automated Kubernetes cluster initialization with join command generation for worker nodes.
+
+- 📊 **Comprehensive Logging**  
+  Detailed progress tracking and status reporting throughout the entire deployment process.
+
+- 🔄 **Sequential Workflow**  
+  Numbered playbooks ensure proper execution order and clear dependency management.
 
 ---
 
-## � Quick Start
+## ⚡ Quick Start
 
-### 1. **Initial Setup**
+### 1. **Complete Automated Setup**
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd proxmox_kubernetes_cluster
 
-# Run setup script (creates example vault if needed)
-./setup.sh
+# Edit vault.yml to match your k8s setup. Sample file provided
+./group_vars/vault.yml
+
+# Run all playbooks in sequence (recommended)
+./scripts/run_playbooks.sh
 ```
 
-### 2. **Configure Your Environment**
+### 2. **Step-by-Step Setup**
+
+#### **Initial Configuration**
 ```bash
 # Edit vault with your actual values
-nano group_vars/vault.yml
-
-# Optionally encrypt the vault (recommended for production)
-ansible-vault encrypt group_vars/vault.yml
+ansible-vault create group_vars/vault.yml
+# or
+ansible-vault edit group_vars/vault.yml
 ```
 
-### 3. **Generate Configuration Files**
+#### **Generate Configuration Files**
 ```bash
 # Generate inventory and config files from templates
-ansible-playbook playbooks/proxmox_k8s_generate_configs.yml
+ansible-playbook playbooks/01.proxmox_k8s_generate_configs.yml --ask-vault-pass
 ```
 
-### 4. **Create VM Template**
+#### **Create VM Infrastructure**
 ```bash
-# Create Ubuntu cloud-init template on Proxmox
-ansible-playbook playbooks/proxmox_k8s_create_vm_template.yml
-```
+# Create Ubuntu vm template on Proxmox
+ansible-playbook playbooks/02.proxmox_k8s_create_vm_template.yml --ask-vault-pass
 
-### 5. **Clone VMs for Kubernetes**
-```bash
 # Clone VMs from template with custom specifications
-ansible-playbook playbooks/proxmox_k8s_clone_vms.yml
+ansible-playbook playbooks/03.proxmox_k8s_clone_vms.yml --ask-vault-pass
+
+# Start VMs from template with custom specifications
+ansible-playbook playbooks/04.proxmox_k8s_start_vms.yml --ask-vault-pass
+
+# Configure hostnames and /etc/hosts
+ansible-playbook playbooks/05.proxmox_k8s_vms_hostname.yml --ask-vault-pass
 ```
 
-### 6. **Configure VMs for Kubernetes**
+#### **Prepare VMs for Kubernetes**
 ```bash
-# Install and configure Kubernetes components
-ansible-playbook -i inventory/hosts.ini playbooks/k8s_vm_config.yml
+# System preparation (swap, sysctl, modules)
+ansible-playbook playbooks/06.proxmox_k8s_os_prep.yml --ask-vault-pass
 ```
 
----
+#### **Install Container Runtime and Kubernetes Tools**
+```bash
+# Install and configure containerd
+ansible-playbook playbooks/07.proxmox_k8s_docker_install.yml --ask-vault-pass
+
+# Install Kubernetes repository
+ansible-playbook playbooks/08.proxmox_k8s_kube_repo.yml --ask-vault-pass
+
+# Initialize Kubernetes cluster
+ansible-playbook playbooks/09.proxmox_k8s_tools_setup.yml --ask-vault-pass
+```
+#### **Initialize Cluster**
+```bash
+# Initialize cluster on master node
+ansible-playbook playbooks/10.proxmox_k8s_cluster_init.yml --ask-vault-pass
+
+# Install CNI
+ansible-playbook playbooks/11.proxmox_k8s_cni_install.yml --ask-vault-pass
+
+# Joine worker nodes to the cluster
+ansible-playbook playbooks/12.proxmox_k8s_workers_join.yml --ask-vault-pass
+```
 
 ## 📋 Configuration
 
@@ -104,7 +152,7 @@ ansible-playbook -i inventory/hosts.ini playbooks/k8s_vm_config.yml
 ```yaml
 # Proxmox connection
 vault_proxmox_host: "proxmox.example.com"
-vault_proxmox_user: "root"
+vault_proxmox_user: "admin_user"
 vault_ssh_private_key_path: "/path/to/private/key"
 
 # VM user credentials
@@ -113,24 +161,46 @@ vault_ci_password: "your_password"
 vault_ci_ssh_public_key_path: "/path/to/public/key"
 
 # Template configuration
-vault_template_vm_id: 9000
+vault_template_vm_id: proxmox_vm_id
 
-# VM specifications
-vault_k8s_hosts:
-  - id: 8001
-    name: "kmaster"
-    ip: "192.168.1.41"
-    mac: "08:00:27:D5:26:51"
+# Kubernetes cluster configuration
+vault_k8s_masters:
+  - ip: "x.x.x.x"
+    name: "k8s-master-01"
+    id: proxmox_vm_id_for_master_node
+    mac: "xx:xx:xx:xx:xx:xx"
     memory: 4096
     cores: 2
+    disk_size: "10G"
+
+vault_k8s_workers:
+  - ip: "x.x.x.x"
+    name: "k8s-worker-01"
+    id: proxmox_vm_id_for_worker_node1
+    mac: "xx:xx:xx:xx:xx:xx"
+    memory: 3072
+    cores: 1
+    disk_size: "10G"
+  - ip: "x.x.x.x"
+    name: "k8s-worker-02"
+    id: proxmox_vm_id_for_worker_node2
+    mac: "xx:xx:xx:xx:xx:xx"
+    memory: 3072
+    cores: 1
+    disk_size: "10G"
+
+# Kubernetes configuration
+kubernetes_version: "1.30"
+pod_network_cidr: "10.244.0.0/16"
+service_subnet: "10.96.0.0/12" # Not used for dev env
 ```
 
 ### **Infrastructure Settings (inventory/group_vars/proxmox.yml)**
 ```yaml
 # Generated from template - do not edit directly
-storage: "ThinVault"
+storage: "local-lvm"
 disk_size: "30G"
-disk_resize_enable: True
+disk_resize_enable: true # If true it will resize the vm disks as per disk_size spec
 image_url: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 ```
 
@@ -157,20 +227,45 @@ See [SECURITY.md](SECURITY.md) for detailed security practices.
 
 ## 🔧 Advanced Usage
 
-### **Custom Kubernetes Version**
+### **Individual Playbook Execution**
 ```bash
-ansible-playbook -i inventory/hosts.ini playbooks/k8s_vm_config.yml -e k8s_version=v1.29
+# Run specific playbooks individually
+ansible-playbook playbooks/04.proxmox_k8s_dock_kube_prep.yml --ask-vault-pass
+ansible-playbook playbooks/05.proxmox_k8s_vms_hostname.yml --ask-vault-pass
 ```
 
-### **Disable Disk Resizing**
+### **Custom Kubernetes Version**
+```bash
+# Edit vault.yml to change kubernetes_version
+ansible-vault edit group_vars/vault.yml
+# Change: kubernetes_version: "1.29"
+```
+
+### **Disable Serial Execution**
 ```yaml
-# In templates/group_vars/proxmox.yml.j2
-disk_resize_enable: False
+# In any playbook, change:
+serial: 1  # to process VMs one at a time
+# to:
+# serial: "50%"  # or remove for parallel execution
+```
+
+### **Environment-Specific Inventories**
+```bash
+# Use different inventory files for different environments
+ansible-playbook -i inventory/production/k8s_cluster.ini playbooks/04.proxmox_k8s_dock_kube_prep.yml
+ansible-playbook -i inventory/staging/k8s_cluster.ini playbooks/04.proxmox_k8s_dock_kube_prep.yml
 ```
 
 ### **Override VM Specifications**
 ```bash
-ansible-playbook playbooks/proxmox_k8s_clone_vms.yml -e '{"vault_k8s_hosts":[{"id":8001,"name":"test","ip":"192.168.1.100","mac":"08:00:27:D5:26:99","memory":2048,"cores":1}]}'
+# Override vault variables at runtime
+ansible-playbook playbooks/03.proxmox_k8s_clone_vms.yml -e '{"vault_k8s_masters":[{"id":8001,"name":"test-master","ip":"192.168.1.100","mac":"08:00:27:D5:26:99","memory":2048,"cores":1}]}'
+```
+
+### **Skip Certain Tasks**
+```bash
+# Skip specific tags
+ansible-playbook playbooks/04.proxmox_k8s_dock_kube_prep.yml --skip-tags "swap,kernel_modules"
 ```
 
 ---
@@ -185,16 +280,20 @@ ansible-playbook playbooks/proxmox_k8s_clone_vms.yml -e '{"vault_k8s_hosts":[{"i
 
 ---
 
-## 🤝 Contributing
+## 🔄 Workflow
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes (update templates, not generated files)
-4. Test with your environment
-5. Submit a pull request
+The complete workflow follows this sequence:
 
----
+1. **Configuration Generation** - Templates generate inventory files with real IPs/hostnames
+2. **Template Creation** - VM template with cloud-init support (Ubuntu)
+3. **VM Cloning** - Multiple VMs cloned with unique specifications
+4. **Boot VMs** - Initial boot and cloud init activities
+5. **Hostname Configuration** - Proper hostnames and DNS resolution setup
+6. **System Preparation** - Kernel modules, sysctl settings, swap configuration
+7. **Container Runtime** - containerd installation with Kubernetes-compatible configuration
+8. **Kubernetes Repository** - Add Kubernetes repository
+9. **Kubernetes Installation** - kubelet, kubeadm, kubectl with version holding
+10. **Cluster Initialization** - Cluster init on master node
+11. **CNI Installation** - Flannel network plugin for pod-to-pod communication
+12. **Worker Join** - Worker nodes join the cluster and become ready
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
