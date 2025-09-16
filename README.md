@@ -86,6 +86,32 @@ cd proxmox_kubernetes_cluster
 ./scripts/run_playbooks.sh
 ```
 
+### 3. Jenkins Orchestrator Pipeline
+
+This repo includes a top-level `Jenkinsfile` to orchestrate config generation and Ansible playbooks, optionally triggering downstream jobs.
+
+- Parameters:
+  - `ENVIRONMENT`: dev | stage | prod (informational)
+  - `APPLY_CHANGES`: false runs in Ansible `--check` mode
+  - `RUN_GENERATE_CONFIGS`, `RUN_GENERATE_INVENTORY`, `RUN_PLAYBOOKS`
+  - `EXTRA_VARS`: space-separated key=value pairs (passed as `-e "..."`)
+  - `ANSIBLE_LIMIT`: passed to `--limit`
+  - `VAULT_CREDENTIALS_ID`: Jenkins Secret Text ID with the Ansible Vault password
+
+Vault handling:
+
+- Configure a Jenkins Secret Text with your vault password and set its ID in `VAULT_CREDENTIALS_ID`.
+- The pipeline exports `VAULT_PASSWORD` env var which scripts use to create a temp `--vault-password-file`.
+
+Non-interactive execution:
+
+- The pipeline calls `scripts/run_playbooks.sh --yes` to skip prompts.
+- You can also run locally:
+
+```bash
+VAULT_PASSWORD="yourpass" ./scripts/run_playbooks.sh --yes --limit k8s_masters -e "kubernetes_version=1.30"
+```
+
 ### 2. **Step-by-Step Setup**
 
 #### **Initial Configuration**
