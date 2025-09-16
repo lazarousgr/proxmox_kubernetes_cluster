@@ -103,15 +103,15 @@ pipeline {
 
     // Helper to wrap steps with optional Vault credential injection
     // If VAULT_CREDENTIALS_ID is set, expose VAULT_PASSWORD env var for steps
-    def withCredentialsWrapper(Closure body) {
-        if (params.VAULT_CREDENTIALS_ID?.trim()) {
-            withCredentials([string(credentialsId: params.VAULT_CREDENTIALS_ID.trim(), variable: 'VAULT_PASSWORD')]) {
-                body()
-            }
-        } else {
-            body()
-        }
-    }
+    // def withCredentialsWrapper(Closure body) {
+    //     if (params.VAULT_CREDENTIALS_ID?.trim()) {
+    //         withCredentials([string(credentialsId: params.VAULT_CREDENTIALS_ID.trim(), variable: 'VAULT_PASSWORD')]) {
+    //             body()
+    //         }
+    //     } else {
+    //         body()
+    //     }
+    // }
 
     post {
         always {
