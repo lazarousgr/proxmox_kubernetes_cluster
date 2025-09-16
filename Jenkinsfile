@@ -21,11 +21,11 @@ pipeline {
         string(name: 'VAULT_CREDENTIALS_ID', defaultValue: '', description: 'Jenkins Secret Text ID containing Ansible Vault password (optional)')
     }
 
-    environment {
-        PYTHONUNBUFFERED = '1'
-        WORKSPACE_DIR = env.WORKSPACE
-        VENV_DIR = "${env.WORKSPACE}/.venv"
-    }
+    // environment {
+    //     PYTHONUNBUFFERED = '1'
+    //     WORKSPACE_DIR = env.WORKSPACE
+    //     VENV_DIR = "${env.WORKSPACE}/.venv"
+    // }
 
     stages {
         stage('Checkout') {
