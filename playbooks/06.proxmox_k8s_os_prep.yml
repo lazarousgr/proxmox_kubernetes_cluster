@@ -1,6 +1,6 @@
 ---
 - name: Kubernetes installation on master nodes
-  hosts: k8s_cluster
+  hosts: k8s_masters
   gather_facts: true # Enable to get hostname for logging
   serial: 1
   vars_files:

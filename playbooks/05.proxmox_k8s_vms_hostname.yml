@@ -1,6 +1,6 @@
 ---
 - name: Configure hostnames and host resolution for cluster
-  hosts: k8s_cluster
+  hosts: k8s_masters
   gather_facts: true  # Enable to get current hostname
   serial: 1
   vars_files:

@@ -11,7 +11,7 @@
   tasks:
     - name: Start each VM
       ansible.builtin.shell: qm start {{ item.id }}
-      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      loop: "{{ groups['k8s_cluster'] }}"
       loop_control:
         label: "Starting {{ item.name }}"
 
@@ -21,7 +21,7 @@
 
     - name: Attempt SSH login and run command on each VM
       ansible.builtin.shell: ssh -o StrictHostKeyChecking=no {{ vault_ci_user }}@{{ item.ip }} {{ login_command }}
-      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      loop: "{{ groups['k8s_cluster'] }}"
       loop_control:
         label: "Logging into {{ item.name }}"
       delegate_to: localhost
