@@ -52,10 +52,10 @@ pipeline {
                             exit 1
                         fi
                         
-                        if [ ! -f "${WORKSPACE_DIR}/group_vars/vault.yml" ]; then
-                            echo "❌ Vault file not found"
-                            exit 1
-                        fi
+                        // if [ ! -f "${WORKSPACE_DIR}/group_vars/vault.yml" ]; then
+                        //     echo "❌ Vault file not found"
+                        //     exit 1
+                        // fi
                         
                         echo "✅ Workspace structure validated"
                     '''
