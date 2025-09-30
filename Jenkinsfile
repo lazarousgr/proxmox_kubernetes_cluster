@@ -21,9 +21,9 @@ pipeline {
     environment {
         ANSIBLE_HOST_KEY_CHECKING = 'False'
         ANSIBLE_STDOUT_CALLBACK = 'yaml'
-        WORKSPACE_DIR = '/workspace'
-        K8S_INVENTORY = '/workspace/inventory/k8s_vms.ini'
-        PROXMOX_INVENTORY = '/workspace/inventory/proxmox.ini'
+        WORKSPACE_DIR = "${WORKSPACE}"
+        K8S_INVENTORY = "${WORKSPACE_DIR}/inventory/k8s_vms.ini"
+        PROXMOX_INVENTORY = "${WORKSPACE_DIR}/inventory/proxmox.ini"
         VAULT_PASSWORD_FILE = '/tmp/vault_password'
     }
     
