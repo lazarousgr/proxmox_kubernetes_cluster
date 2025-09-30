@@ -67,7 +67,7 @@ pipeline {
             steps {
                 script {
                     echo "🔐 Extracting vault configuration from Jenkins..."
-                    withCredentials([file(credentialsId: 'proxmox-k8s-vault', variable: 'VAULT_FILE_PATH')]) {
+                    withCredentials([file(credentialsId: params.VAULT_FILE_CREDENTIAL, variable: 'VAULT_FILE_PATH')]) {
                         sh '''
                             cd ${WORKSPACE_DIR}
                             
