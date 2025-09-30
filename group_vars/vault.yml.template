@@ -1,0 +1,52 @@
+# Vault configuration template
+# This file will be processed by Jenkins to substitute environment variables
+
+# Proxmox Host Details
+vault_proxmox_host: "proxmox.laz"
+vault_proxmox_user: "${PROXMOX_USER}"
+vault_proxmox_password: "${PROXMOX_PASSWORD}"
+vault_ssh_private_key_path: "${SSH_KEY_FILE}"
+
+# VM Cloudinit user details
+vault_ci_user: "${VM_USER}"
+vault_ci_password: "${VM_PASSWORD}"
+vault_ci_ssh_public_key_path: "/home/lazarous/.ssh/id_ed25519.pub"
+
+# Template VM details
+vault_template_vm_id: 8000  # ID for the template VM
+
+# VM network configuration
+vault_k8s_masters:
+  - ip: "192.168.1.41"
+    name: "k8s-master-01"
+    id: 8001
+    mac: "08:00:27:D5:26:51"
+    role: "controlplane"
+    memory: 16384
+    cores: 2
+    disk_size: "30G"
+
+vault_k8s_workers:
+  - ip: "192.168.1.42"
+    name: "k8s-worker-01"
+    id: 8002
+    mac: "08:00:27:D5:26:52"
+    role: "worker"
+    memory: 3072
+    cores: 1
+    disk_size: "15G"
+  - ip: "192.168.1.43"
+    name: "k8s-worker-02"
+    id: 8003
+    mac: "08:00:27:D5:26:53"
+    role: "worker"
+    memory: 3072
+    cores: 1
+    disk_size: "15G"
+
+# Kubernetes configuration
+kubernetes_version: "1.34"
+pod_network_cidr: "10.244.0.0/16"
+service_subnet: "10.96.0.0/12"
+
+storage: "ThinVault"
