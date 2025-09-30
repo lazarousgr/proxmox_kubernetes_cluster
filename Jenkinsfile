@@ -90,7 +90,7 @@ pipeline {
         stage('🏗️ Infrastructure Setup') {
             steps {
                 echo "🏗️ Setting up infrastructure..."
-                sh '''
+                sh """
                     cd ${WORKSPACE_DIR}
                     
                     # Generate configurations
@@ -118,7 +118,7 @@ pipeline {
                         -i ${PROXMOX_INVENTORY} \
                         -i ${K8S_INVENTORY} \
                         playbooks/04.proxmox_k8s_start_vms.yml
-                '''
+                """
             }
         }
         
