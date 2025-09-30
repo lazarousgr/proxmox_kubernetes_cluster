@@ -22,8 +22,8 @@ pipeline {
         ANSIBLE_HOST_KEY_CHECKING = 'False'
         ANSIBLE_STDOUT_CALLBACK = 'yaml'
         WORKSPACE_DIR = '/workspace'
-        INVENTORY_FILE = '/workspace/inventory/k8s_vms.ini'
-        HOSTS_INVENTORY = '/workspace/inventory/hosts.ini'
+        K8S_INVENTORY = '/workspace/inventory/k8s_vms.ini'
+        PROXMOX_INVENTORY = '/workspace/inventory/proxmox.ini'
         VAULT_PASSWORD_FILE = '/tmp/vault_password'
     }
     
@@ -102,27 +102,28 @@ pipeline {
                     # Generate configurations
                     echo "📋 Generating inventory and configurations..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        playbooks/01.proxmox_k8s_generate_configs.yml
+                        playbooks/01.proxmox_k8s_generate_configs.yml \
+                        -e "include_workers=${params.FULL_CLUSTER}"
                     
                     # Create cloud template
                     echo "☁️ Creating VM template..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${HOSTS_INVENTORY} \
+                        -i ${PROXMOX_INVENTORY} \
                         playbooks/02.proxmox_k8s_create_vm_template.yml
                     
                     # Clone VMs
                     echo "🖥️ Cloning VMs..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${HOSTS_INVENTORY} \
-                        playbooks/03.proxmox_k8s_clone_vms.yml \
-                        -e "deploy_workers=${params.FULL_CLUSTER}"
+                        -i ${PROXMOX_INVENTORY} \
+                        -i ${K8S_INVENTORY} \
+                        playbooks/03.proxmox_k8s_clone_vms.yml
                     
                     # Start VMs
                     echo "🚀 Starting VMs..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${HOSTS_INVENTORY} \
-                        playbooks/04.proxmox_k8s_start_vms.yml \
-                        -e "deploy_workers=${params.FULL_CLUSTER}"
+                        -i ${PROXMOX_INVENTORY} \
+                        -i ${K8S_INVENTORY} \
+                        playbooks/04.proxmox_k8s_start_vms.yml
                 '''
             }
         }
@@ -135,91 +136,107 @@ pipeline {
                     
                     # System preparation (swap, sysctl, modules)
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/06.proxmox_k8s_os_prep.yml
                     
                     # Configure hostnames
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/05.proxmox_k8s_vms_hostname.yml
                     
                     # Install Docker/containerd
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/07.proxmox_k8s_docker_install.yml
                 '''
             }
         }
         
         stage('☸️ Kubernetes Installation') {
+            when {
+                expression { params.FULL_CLUSTER == true }
+            }
             steps {
                 echo "☸️ Installing Kubernetes components..."
                 sh '''
                     cd ${WORKSPACE_DIR}
-                    
                     # Install Kubernetes repository
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/08.proxmox_k8s_kube_repo.yml
-                    
                     # Install Kubernetes tools
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/09.proxmox_k8s_tools_setup.yml
                 '''
             }
         }
-        
         stage('🎮 Cluster Initialization') {
+            when {
+                expression { params.FULL_CLUSTER == true }
+            }
             steps {
                 echo "🎮 Initializing Kubernetes cluster..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/10.proxmox_k8s_cluster_init.yml
                 '''
             }
         }
-        
-        stage('�� Network Setup') {
+        stage('🌐 Network Setup') {
+            when {
+                expression { params.FULL_CLUSTER == true }
+            }
             steps {
                 echo "🌐 Installing CNI..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
+                        -i ${K8S_INVENTORY} \
                         playbooks/11.proxmox_k8s_cni_install.yml
                 '''
             }
         }
-        
         stage('👥 Worker Nodes') {
-            when { 
-                params.FULL_CLUSTER == true 
+            when {
+                expression { params.FULL_CLUSTER == true }
             }
             steps {
                 echo "👥 Joining worker nodes..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${INVENTORY_FILE} \
-                        playbooks/12.proxmox_k8s_workers_join.yml \
-                        -e "deploy_workers={{ params.FULL_CLUSTER }}" || echo "⚠️ No worker nodes found or join failed"
+                        -i ${K8S_INVENTORY} \
+                        playbooks/12.proxmox_k8s_workers_join.yml
                 '''
             }
         }
-        
         stage('✅ Cluster Validation') {
+            when {
+                expression { params.FULL_CLUSTER == true }
+            }
             steps {
                 echo "✅ Validating cluster setup..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     echo "Checking cluster status..."
-                    
                     # SSH to master and check cluster
                     ssh -o StrictHostKeyChecking=no lazarous@192.168.1.41 "kubectl get nodes -o wide" || echo "⚠️ Could not validate cluster"
                     ssh -o StrictHostKeyChecking=no lazarous@192.168.1.41 "kubectl get pods -A" || echo "⚠️ Could not get pod status"
+                '''
+            }
+        }
+        stage('🔄 VM Restart') {
+            steps {
+                echo "🔄 Restarting all VMs..."
+                sh '''
+                    cd ${WORKSPACE_DIR}
+                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                        -i ${PROXMOX_INVENTORY} \
+                        -i ${K8S_INVENTORY} \
+                        playbooks/13.proxmox_k8s_restart_vms.yml
                 '''
             }
         }

@@ -7,6 +7,12 @@
     - ../group_vars/vault.yml
   
   tasks:
+    - name: Log configuration generation start
+      ansible.builtin.debug:
+        msg: 
+          - "Starting configuration generation from templates"
+          - "Include workers: {{ include_workers | default(true) | bool }}"
+          - "Deployment mode: {{ 'full-cluster' if include_workers | default(true) | bool else 'single-node' }}"
     - name: Create directories to hold generated group vars and inventory files
       ansible.builtin.file:
         path: "{{ item }}"
@@ -14,23 +20,69 @@
         mode: '0755'
       loop:
         - "../inventory"
-        - "../inventory/group_vars"
+      register: dir_creation
+    
+    - name: Log directory creation results
+      ansible.builtin.debug:
+        msg: "Directory {{ item.item }}: {{ 'Created' if item.changed else 'Already exists' }}"
+      loop: "{{ dir_creation.results }}"
     
     - name: Generate proxmox group vars from template
       ansible.builtin.template:
         src: ../templates/group_vars/proxmox.yml.j2
-        dest: ../inventory/group_vars/proxmox.yml
+        dest: ../group_vars/proxmox.yml
         mode: '0644'
+      register: proxmox_group_vars
     
-    - name: Generate hosts inventory from template  
+    - name: Log proxmox group vars generation
+      ansible.builtin.debug:
+        msg: "Proxmox group vars: {{ 'Generated' if proxmox_group_vars.changed else 'Already up to date' }}"
+    
+    - name: Generate proxmox inventory from template  
       ansible.builtin.template:
-        src: ../templates/inventory/hosts.ini.j2
-        dest: ../inventory/hosts.ini
+        src: ../templates/inventory/proxmox.ini.j2
+        dest: ../inventory/proxmox.ini
         mode: '0644'
+      register: proxmox_inventory
+    
+    - name: Log proxmox inventory generation
+      ansible.builtin.debug:
+        msg: "Proxmox inventory: {{ 'Generated' if proxmox_inventory.changed else 'Already up to date' }}"
         
+    - name: Generate k8s VMs group vars from template
+      ansible.builtin.template:
+        src: ../templates/group_vars/k8s_vm.yml.j2
+        dest: ../group_vars/k8s_vm.yml
+        mode: '0644'
+      register: k8s_vm_group_vars
+    
+    - name: Log k8s VMs group vars generation
+      ansible.builtin.debug:
+        msg: "K8s VMs group vars: {{ 'Generated' if k8s_vm_group_vars.changed else 'Already up to date' }}"
+
     - name: Generate k8s VMs inventory from template
       ansible.builtin.template:
         src: ../templates/inventory/k8s_vms.ini.j2
         dest: ../inventory/k8s_vms.ini
         mode: '0644'
+      register: k8s_vms_inventory
+    
+    - name: Log k8s VMs inventory generation
+      ansible.builtin.debug:
+        msg: "K8s VMs inventory: {{ 'Generated' if k8s_vms_inventory.changed else 'Already up to date' }}"
+
+    - name: Display configuration generation summary
+      ansible.builtin.debug:
+        msg:
+          - "Configuration Generation Summary:"
+          - "=================================="
+          - "Deployment Mode: {{ 'full-cluster' if include_workers | default(true) | bool else 'single-node' }}"
+          - "Include Workers: {{ include_workers | default(true) | bool }}"
+          - ""
+          - "Generated Files:"
+          - "- Proxmox group vars: {{ 'Generated' if proxmox_group_vars.changed else 'Already up to date' }}"
+          - "- Proxmox inventory: {{ 'Generated' if proxmox_inventory.changed else 'Already up to date' }}"
+          - "- K8s VMs group vars: {{ 'Generated' if k8s_vm_group_vars.changed else 'Already up to date' }}"
+          - "- K8s VMs inventory: {{ 'Generated' if k8s_vms_inventory.changed else 'Already up to date' }}"
+          - ""
 

@@ -3,38 +3,43 @@
   hosts: proxmox
   gather_facts: false
   vars_files:
-    - ../group_vars/vault.yml
-    - ../inventory/group_vars/proxmox.yml
+    - ../group_vars/proxmox.yml
 
   tasks:
+
+    - name: Set k8s cluster hosts with their VM details
+      set_fact:
+        k8s_hosts: "{{ groups['k8s_cluster'] | map('extract', hostvars) | list }}"
+      delegate_to: localhost
+
     - name: Stop each VM gracefully
-      ansible.builtin.shell: qm stop {{ item.id }}
-      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      ansible.builtin.shell: qm stop {{ item.vm_id }}
+      loop: "{{ k8s_hosts }}"
       loop_control:
-        label: "Stopping {{ item.name }}"
-      ignore_errors: yes
+        label: "Stopping {{ item.inventory_hostname }}"
 
     - name: Wait for VMs to shutdown completely
       ansible.builtin.pause:
         seconds: 30
 
     - name: Start each VM
-      ansible.builtin.shell: qm start {{ item.id }}
-      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      ansible.builtin.shell: qm start {{ item.vm_id }}
+      loop: "{{ k8s_hosts }}"
       loop_control:
-        label: "Starting {{ item.name }}"
+        label: "Starting {{ item.inventory_hostname }}"
 
     - name: Wait 5 minutes for VMs to boot and services to start
       ansible.builtin.pause:
         minutes: 5
 
     - name: Verify VMs are accessible via SSH
-      ansible.builtin.command: ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 {{ vault_ci_user }}@{{ item.ip }} "echo 'VM {{ item.name }} is accessible'"
-      loop: "{{ vault_k8s_masters + vault_k8s_workers }}"
+      ansible.builtin.command: ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 {{ ci_user }}@{{ item.ansible_host }} "echo 'VM {{ item.inventory_hostname }} is accessible'"
+      loop: "{{ k8s_hosts }}"
       loop_control:
-        label: "Checking connectivity to {{ item.name }}"
+        label: "Checking connectivity to {{ item.inventory_hostname }}"
       delegate_to: localhost
       register: vm_connectivity
+      changed_when: false
       failed_when: false
 
     - name: Display restart summary
@@ -42,8 +47,8 @@
         msg:
           - "VM Restart Summary:"
           - "================================================================"
-          - "{{ '✓ ' + item.item.name + ' - Accessible' if item.rc == 0 else '❌ ' + item.item.name + ' - Not accessible' }}"
+          - "{{ '✓ ' + item.item.inventory_hostname + ' - Accessible' if item.rc == 0 else '❌ ' + item.item.inventory_hostname + ' - Not accessible' }}"
       loop: "{{ vm_connectivity.results }}"
       loop_control:
-        label: "{{ item.item.name }}"
+        label: "{{ item.item.inventory_hostname }}"
 

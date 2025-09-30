@@ -1,9 +1,10 @@
 ---
 - name: Install Kubernetes CNI (Flannel)
-  hosts: k8s_masters[0]
+  hosts: k8s_masters
   gather_facts: true
   vars_files:
-    - ../group_vars/vault.yml
+    - ../group_vars/k8s_vm.yml
+    - ../group_vars/proxmox.yml
   become: no  # Run as regular user since we need kubectl access
 
   tasks:
@@ -14,7 +15,7 @@
     - name: Check if Flannel is already installed
       ansible.builtin.command: kubectl get pods -n kube-flannel -l app=flannel
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       register: flannel_check
       failed_when: false
       changed_when: false
@@ -53,7 +54,7 @@
     - name: Apply Flannel CNI
       ansible.builtin.command: kubectl apply -f /tmp/kube-flannel.yml
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       when: flannel_check.rc != 0 or 'flannel' not in flannel_check.stdout
       register: flannel_apply
 
@@ -65,7 +66,7 @@
     - name: Wait for Flannel DaemonSet to be ready
       ansible.builtin.command: kubectl rollout status daemonset/kube-flannel-ds -n kube-flannel --timeout=300s
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       when: flannel_apply is defined and flannel_apply.changed
       register: flannel_rollout
 
@@ -77,7 +78,7 @@
     - name: Verify nodes are ready
       ansible.builtin.command: kubectl get nodes
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       register: nodes_status
       retries: 5
       delay: 30
@@ -92,7 +93,7 @@
     - name: Verify Flannel pods
       ansible.builtin.command: kubectl get pods -n kube-flannel
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       register: flannel_pods
 
     - name: Display Flannel installation summary

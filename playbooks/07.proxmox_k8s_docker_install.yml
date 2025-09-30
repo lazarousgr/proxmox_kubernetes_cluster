@@ -3,8 +3,6 @@
   hosts: k8s_cluster
   gather_facts: true  # Enable to get hostname for logging
   serial: 1
-  vars_files:
-    - ../group_vars/vault.yml
   become: yes
 
   tasks:

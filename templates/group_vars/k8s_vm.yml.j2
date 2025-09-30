@@ -1,0 +1,7 @@
+# Kubernetes Configuration
+kubernetes_version: {{ kubernetes_version | default('1.34.0') }}
+pod_network_cidr: {{ pod_network_cidr | default('10.244.0.0/16') }}
+service_subnet: {{ service_subnet | default('10.96.0.0/12') }}
+
+# Deployment Mode
+deployment_mode: {{ 'full-cluster' if include_workers | default(true) | bool else 'single-node' }}

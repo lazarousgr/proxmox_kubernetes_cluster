@@ -1,11 +1,10 @@
 ---
 - name: Initialize Kubernetes Cluster on Control Plane Node
-  hosts: k8s_cluster  # Only run on first master node
+  hosts: k8s_cluster
   gather_facts: true
   serial: 1
   vars_files:
-    - ../group_vars/vault.yml
-    - ../inventory/group_vars/proxmox.yml
+    - ../group_vars/k8s_vm.yml
   become: yes
 
   tasks:

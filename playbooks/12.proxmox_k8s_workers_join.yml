@@ -4,7 +4,7 @@
   gather_facts: true
   serial: 1
   vars_files:
-    - ../group_vars/vault.yml
+    - ../group_vars/proxmox.yml
   become: yes
 
   tasks:
@@ -96,10 +96,10 @@
     - name: Verify node join on master
       ansible.builtin.command: kubectl get node {{ ansible_hostname | default(inventory_hostname) }}
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       register: node_verification
       delegate_to: "{{ groups['k8s_masters'][0] }}"
-      become_user: "{{ vault_ci_user }}"
+      become_user: "{{ ci_user }}"
       when: join_result is defined and join_result.rc == 0
       retries: 5
       delay: 10

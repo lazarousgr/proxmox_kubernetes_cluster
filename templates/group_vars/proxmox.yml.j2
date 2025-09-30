@@ -1,6 +1,15 @@
 ---
-# Template for Proxmox group variables
+# OS Image variables
 template_vm_name: ubuntu-24.04-template
-storage: ThinVault
-disk_resize_enable: True
 image_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+image_md5sum: 77a77cff0d62968d5166322ea2b78008
+disk_resize_enable: True
+template_vm_id: {{ vault_template_vm_id }}   # ID for the template VM
+
+# Proxmox storage variables
+storage: {{ storage }}
+
+# VM Cloudinit user details
+ci_user: {{ vault_ci_user }}
+ci_password: {{ vault_ci_password }}
+ci_ssh_public_key_path: {{ vault_ci_ssh_public_key_path }}

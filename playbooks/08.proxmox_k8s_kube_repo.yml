@@ -4,7 +4,7 @@
   serial: 1
   gather_facts: false
   vars_files:
-    - ../group_vars/vault.yml
+    - ../group_vars/k8s_vm.yml
   become: yes
 
   tasks:

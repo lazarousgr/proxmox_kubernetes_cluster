@@ -3,58 +3,113 @@
   hosts: proxmox
   gather_facts: false
   vars_files:
-    - ../group_vars/vault.yml
-    - ../inventory/group_vars/proxmox.yml
+    - ../group_vars/proxmox.yml
 
   tasks:
+    - name: Extract filename from URL
+      set_fact:
+        extracted_image_file: "{{ image_url | basename }}"
+    
+    - name: Check if cloud image is already downloaded
+      ansible.builtin.stat:
+        path: "/root/{{ extracted_image_file }}"
+      register: cloud_image_file
+    
+    - name: Calculate MD5 checksum of existing file
+      ansible.builtin.shell: md5sum "/root/{{ extracted_image_file }}"
+      register: file_md5
+      when: cloud_image_file.stat.exists
+      failed_when: false
+    
+    - name: Log cloud image download status
+      ansible.builtin.debug:
+        msg: 
+          - "Cloud image {{ extracted_image_file }}: {{ 'Already downloaded' if cloud_image_file.stat.exists else 'Not found, will download' }}"
+          - "Current MD5: {{ file_md5.stdout.split()[0] | default('unknown') }}"
+          - "Expected MD5: {{ image_md5sum }}"
+      when: cloud_image_file.stat.exists
+    
     - name: Download cloud image
       ansible.builtin.shell: wget {{ image_url }}
       args:
         chdir: /root
+      when: 
+        - not cloud_image_file.stat.exists or 
+          (cloud_image_file.stat.exists and file_md5.stdout.split()[0] != image_md5sum)
+      register: download_result
     
-    - name: Extract filename from URL
-      set_fact:
-        extracted_image_file: "{{ image_url | basename }}"
+    - name: Log cloud image download result
+      ansible.builtin.debug:
+        msg: "Cloud image download: {{ 'Completed' if download_result is defined and download_result.rc is defined and download_result.rc == 0 else 'Skipped (already exists)' }}"
+      when: download_result is defined
+    
+    - name: Verify downloaded file MD5 checksum
+      ansible.builtin.shell: md5sum "/root/{{ extracted_image_file }}"
+      register: downloaded_file_md5
+      when: 
+        - download_result is defined
+        - download_result.rc is defined
+        - download_result.rc == 0
+    
+    - name: Log MD5 verification result
+      ansible.builtin.debug:
+        msg: 
+          - "MD5 Verification:"
+          - "  Expected: {{ image_md5sum }}"
+          - "  Actual:   {{ downloaded_file_md5.stdout.split()[0] if downloaded_file_md5.stdout is defined else 'unknown' }}"
+          - "  Status:   {{ 'PASS' if downloaded_file_md5.stdout is defined and downloaded_file_md5.stdout.split()[0] == image_md5sum else 'FAIL' }}"
+      when: downloaded_file_md5 is defined
 
     - name: Create new VM
       ansible.builtin.shell: >
-        qm create {{ vault_template_vm_id }} --memory 1024 --core 1 --name {{ template_vm_name }} --net0 virtio,bridge=vmbr0
+        qm create {{ template_vm_id }} --memory 1024 --core 1 --name {{ template_vm_name }} --net0 virtio,bridge=vmbr0
     
     - name: Wait for few seconds till VM is created
       ansible.builtin.pause:
         seconds: 10
 
     - name: Set machine type to Q35
-      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --machine q35
+      ansible.builtin.shell: qm set {{ template_vm_id }} --machine q35
 
     - name: Set CPU type to host
-      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --cpu host
+      ansible.builtin.shell: qm set {{ template_vm_id }} --cpu host
 
     - name: Add serial console
-      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --serial0 socket --vga serial0
+      ansible.builtin.shell: qm set {{ template_vm_id }} --serial0 socket --vga serial0
 
     - name: Import disk image to storage
       ansible.builtin.shell: >
-        qm disk import {{ vault_template_vm_id }} /root/{{ extracted_image_file }} {{ storage }} --format qcow2
+        qm disk import {{ template_vm_id }} /root/{{ extracted_image_file }} {{ storage }} --format qcow2
 
     - name: Attach disk as SCSI
       ansible.builtin.shell: >
-        qm set {{ vault_template_vm_id }} --scsihw virtio-scsi-pci --scsi0 {{ storage }}:vm-{{ vault_template_vm_id }}-disk-0,ssd=1
+        qm set {{ template_vm_id }} --scsihw virtio-scsi-pci --scsi0 {{ storage }}:vm-{{ template_vm_id }}-disk-0,ssd=1
 
     - name: Set boot options
-      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --boot c --bootdisk scsi0
+      ansible.builtin.shell: qm set {{ template_vm_id }} --boot c --bootdisk scsi0
 
     - name: Add cloud-init drive
-      ansible.builtin.shell: qm set {{ vault_template_vm_id }} --ide0 {{ storage }}:cloudinit
+      ansible.builtin.shell: qm set {{ template_vm_id }} --ide0 {{ storage }}:cloudinit
 
     - name: Set cloud-init details
       ansible.builtin.shell: >
-        qm set {{ vault_template_vm_id }} --ciuser {{ vault_ci_user }} --cipassword {{ vault_ci_password }} --sshkey {{ vault_ci_ssh_public_key_path }} --ipconfig0 ip=dhcp
+        qm set {{ template_vm_id }} --ciuser {{ ci_user }} --cipassword {{ ci_password }} --sshkey {{ ci_ssh_public_key_path }} --ipconfig0 ip=dhcp
 
     - name: Convert VM to template
-      ansible.builtin.shell: qm template {{ vault_template_vm_id }}
+      ansible.builtin.shell: qm template {{ template_vm_id }}
 
     - name: Clean up downloaded cloud image file
       ansible.builtin.file:
         path: "/root/{{ extracted_image_file }}"
         state: absent
+
+    - name: Display final summary
+      ansible.builtin.debug:
+        msg:
+          - "=== TEMPLATE CREATION COMPLETE ==="
+          - "✓ Template VM ID: {{ template_vm_id }}"
+          - "✓ Template Name: {{ template_vm_name }}"
+          - "✓ Storage: {{ storage }}"
+          - "✓ Cloud Image: {{ extracted_image_file }}"
+          - "✓ Cloud-init User: {{ ci_user }}"
+          - ""

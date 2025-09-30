@@ -4,10 +4,12 @@
 vault_password.txt
 
 # Inventory files with actual credentials/IPs
-inventory/hosts.ini
+inventory/proxmox.ini
 inventory/k8s_vms.ini
 inventory/group_vars/proxmox.yml
 group_vars/vault.yml
+group_vars/proxmox.yml
+group_vars/k8s_vm.yml
 
 scripts/*
 

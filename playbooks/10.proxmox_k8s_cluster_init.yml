@@ -1,11 +1,11 @@
 ---
 - name: Initialize Kubernetes Cluster on Control Plane Node
-  hosts: k8s_masters[0]  # Only run on first master node
+  hosts: k8s_masters  # Only run on first master node
   gather_facts: true
   serial: 1
   vars_files:
-    - ../group_vars/vault.yml
-    - ../inventory/group_vars/proxmox.yml
+    - ../group_vars/k8s_vm.yml
+    - ../group_vars/proxmox.yml
   become: yes
 
   tasks:
@@ -69,28 +69,28 @@
 
     - name: Create .kube directory for user
       ansible.builtin.file:
-        path: "/home/{{ vault_ci_user }}/.kube"
+        path: "/home/{{ ci_user }}/.kube"
         state: directory
-        owner: "{{ vault_ci_user }}"
-        group: "{{ vault_ci_user }}"
+        owner: "{{ ci_user }}"
+        group: "{{ ci_user }}"
         mode: '0755'
       when: kubeadm_init_result is defined and kubeadm_init_result.changed
 
     - name: Copy admin.conf to user's kube config
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
-        dest: "/home/{{ vault_ci_user }}/.kube/config"
-        owner: "{{ vault_ci_user }}"
-        group: "{{ vault_ci_user }}"
+        dest: "/home/{{ ci_user }}/.kube/config"
+        owner: "{{ ci_user }}"
+        group: "{{ ci_user }}"
         mode: '0644'
         remote_src: yes
       when: kubeadm_init_result is defined and kubeadm_init_result.changed
 
     - name: Wait for cluster to be ready
       ansible.builtin.command: kubectl get nodes
-      become_user: "{{ vault_ci_user }}"
+      become_user: "{{ ci_user }}"
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       register: cluster_status
       until: cluster_status.rc == 0
       retries: 10
@@ -106,9 +106,9 @@
 
     - name: Verify existing cluster (if already initialized)
       ansible.builtin.command: kubectl get nodes
-      become_user: "{{ vault_ci_user }}"
+      become_user: "{{ ci_user }}"
       environment:
-        KUBECONFIG: "/home/{{ vault_ci_user }}/.kube/config"
+        KUBECONFIG: "/home/{{ ci_user }}/.kube/config"
       register: existing_cluster_status
       when: cluster_initialized.stat.exists and (kubeadm_init_result is not defined or not kubeadm_init_result.changed)
 
@@ -127,7 +127,7 @@
           - "✓ Control plane node: {{ ansible_hostname | default(inventory_hostname) }}"
           - "✓ API server address: {{ ansible_default_ipv4.address }}"
           - "✓ Pod network CIDR: {{ pod_network_cidr }}"
-          - "✓ kubectl configured for user: {{ vault_ci_user }}"
+          - "✓ kubectl configured for user: {{ ci_user }}"
           - "{{ '✓ Cluster verified and ready' if (cluster_status is defined and cluster_status is not skipped and cluster_status.rc is defined and cluster_status.rc == 0) or (existing_cluster_status is defined and existing_cluster_status is not skipped and existing_cluster_status.rc is defined and existing_cluster_status.rc == 0) else '✓ Cluster initialized' }}"
           - "{{ '✓ Join command ready for worker nodes' if join_command is defined else '✓ Cluster management ready' }}"
           - "================================================================"
