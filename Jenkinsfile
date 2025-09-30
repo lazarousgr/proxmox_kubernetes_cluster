@@ -12,9 +12,11 @@ pipeline {
             choices: ['-v', '-vv', '-vvv', ''],
             description: 'Ansible verbosity level'
         )
-        password(
-            name: 'VAULT_PASSWORD',
-            description: 'Ansible Vault password for decrypting vault.yml'
+        credentials(
+            name: 'VAULT_FILE_CREDENTIAL',
+            credentialType: 'org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl',
+            description: 'Vault configuration file',
+            required: true
         )
     }
     
@@ -24,7 +26,7 @@ pipeline {
         WORKSPACE_DIR = "${WORKSPACE}"
         K8S_INVENTORY = "${WORKSPACE_DIR}/inventory/k8s_vms.ini"
         PROXMOX_INVENTORY = "${WORKSPACE_DIR}/inventory/proxmox.ini"
-        VAULT_PASSWORD_FILE = '/tmp/vault_password'
+        VAULT_FILE = "${WORKSPACE_DIR}/group_vars/vault.yml"
     }
     
     stages {
@@ -35,9 +37,9 @@ pipeline {
                     echo "Full Cluster Mode: ${params.FULL_CLUSTER}"
                     echo "Ansible Verbosity: ${params.ANSIBLE_VERBOSITY}"
                     
-                    // Validate vault password parameter
-                    if (!params.VAULT_PASSWORD) {
-                        error "❌ VAULT_PASSWORD parameter is required"
+                    // Validate vault file credential
+                    if (!params.VAULT_FILE_CREDENTIAL) {
+                        error "❌ VAULT_FILE_CREDENTIAL parameter is required"
                     }
                     
                     // Check workspace and inventory files
@@ -61,34 +63,26 @@ pipeline {
             }
         }
         
-        stage('🔐 Vault Decryption') {
+        stage('🔐 Extract Vault Configuration') {
             steps {
                 script {
-                    echo "🔐 Handling Ansible Vault..."
-                    sh '''
-                        cd ${WORKSPACE_DIR}
-                        
-                        # Create temporary vault password file
-                        echo "${VAULT_PASSWORD}" > ${VAULT_PASSWORD_FILE}
-                        chmod 600 ${VAULT_PASSWORD_FILE}
-                        
-                        # Check if vault file is encrypted
-                        if head -1 group_vars/vault.yml | grep -q "ANSIBLE_VAULT"; then
-                            echo "🔒 Vault file is encrypted - decrypting..."
+                    echo "🔐 Extracting vault configuration from Jenkins..."
+                    withCredentials([file(credentialsId: 'proxmox-k8s-vault', variable: 'VAULT_FILE_PATH')]) {
+                        sh '''
+                            cd ${WORKSPACE_DIR}
                             
-                            # Decrypt vault file
-                            ansible-vault decrypt group_vars/vault.yml --vault-password-file ${VAULT_PASSWORD_FILE}
+                            # Create group_vars directory if it doesn't exist
+                            mkdir -p group_vars
                             
-                            if [ $? -eq 0 ]; then
-                                echo "✅ Vault file decrypted successfully"
-                            else
-                                echo "❌ Failed to decrypt vault file - check password"
-                                exit 1
-                            fi
-                        else
-                            echo "🔓 Vault file is already unencrypted"
-                        fi
-                    '''
+                            # Copy vault file from Jenkins credential
+                            cp ${VAULT_FILE_PATH} ${VAULT_FILE}
+                            
+                            # Set secure permissions
+                            chmod 600 ${VAULT_FILE}
+                            
+                            echo "✅ Vault configuration extracted successfully"
+                        '''
+                    }
                 }
             }
         }
@@ -264,7 +258,7 @@ pipeline {
             echo "🧹 Cleaning up temporary files..."
             sh '''
                 rm -f /tmp/kubeadm-join-command.sh || true
-                rm -f ${VAULT_PASSWORD_FILE} || true
+                rm -f ${VAULT_FILE} || true
             '''
         }
     }
