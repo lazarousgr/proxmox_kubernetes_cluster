@@ -1,0 +1,35 @@
+# =============================================================================
+# Kubernetes Cluster Inventory
+# Generated from vault.yml with conditional worker inclusion
+# =============================================================================
+
+[k8s_masters]
+{% for master in vault_k8s_masters %}
+{{ master.name }} ansible_host={{ master.ip }} vm_id={{ master.id }} vm_mac={{ master.mac }} vm_memory={{ master.memory }} vm_cores={{ master.cores }} vm_disk_size={{ master.disk_size }} vm_role=controlplane
+{% endfor %}
+
+[k8s_workers]
+{% if include_workers | default(true) | bool %}
+{% for worker in vault_k8s_workers %}
+{{ worker.name }} ansible_host={{ worker.ip }} vm_id={{ worker.id }} vm_mac={{ worker.mac }} vm_memory={{ worker.memory }} vm_cores={{ worker.cores }} vm_disk_size={{ worker.disk_size }} vm_role=worker
+{% endfor %}
+{% endif %}
+
+# =============================================================================
+# Cluster Groups
+# =============================================================================
+
+[k8s_cluster:children]
+k8s_masters
+{% if include_workers | default(true) | bool %}k8s_workers{% endif %}
+
+# =============================================================================
+# Global Variables
+# =============================================================================
+
+[k8s_cluster:vars]
+ansible_user={{ vault_ci_user }}
+ansible_ssh_private_key_file={{ vault_ssh_private_key_path }}
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_ssh_retries=3
+ansible_ssh_timeout=30

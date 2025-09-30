@@ -14,7 +14,6 @@ group_vars/k8s_vm.yml
 scripts/*
 
 templates/group_vars/proxmox.yml.shell-template
-templates/inventory/k8s_vms.ini.j2
 
 
 # SSH keys
