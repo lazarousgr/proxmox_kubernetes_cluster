@@ -1,0 +1,54 @@
+---
+- name: Generate SSH keys and merge with existing vault configuration
+  hosts: localhost
+  gather_facts: yes
+  vars:
+    ssh_key_dir: "{{ lookup('env', 'SSH_KEY_DIR') | default(lookup('env', 'HOME') + '/.ssh', true) }}"
+    key_name: "jenkins_infra_key"
+    is_jenkins: "{{ lookup('env', 'JENKINS_HOME') | default('', true) != '' }}"
+    workspace_dir: "{{ lookup('env', 'WORKSPACE') | default(playbook_dir + '/..', true) }}"
+    vault_file: "{{ playbook_dir }}/../group_vars/vault.yml"
+    
+  tasks:
+    - name: Create SSH directory
+      file:
+        path: "{{ ssh_key_dir }}"
+        state: directory
+        mode: '0700'
+        
+    - name: Generate SSH key pair
+      openssh_keypair:
+        path: "{{ ssh_key_dir }}/{{ key_name }}"
+        type: ed25519
+        comment: "jenkins-infra-{{ ansible_date_time.epoch }}"
+        mode: '0600'
+        force: "{{ lookup('env', 'REGENERATE_KEYS') | default('false', true) | bool }}"
+      register: key_gen
+      
+    - name: Read public key
+      slurp:
+        src: "{{ ssh_key_dir }}/{{ key_name }}.pub"
+      register: public_key
+      
+    - name: Merge SSH keys into existing vault
+      blockinfile:
+        path: "{{ vault_file }}"
+        marker: "# {mark} ANSIBLE MANAGED SSH KEYS"
+        block: |
+          # SSH Key Configuration (auto-generated)
+          vault_ssh_private_key_path: "{{ ssh_key_dir }}/{{ key_name }}"
+          vault_ssh_public_key_path: "{{ ssh_key_dir }}/{{ key_name }}.pub"
+          vault_ssh_public_key: "{{ public_key.content | b64decode | trim }}"
+          
+          # VM SSH key references (same key for both Proxmox and VMs)
+          vault_ci_ssh_private_key_path: "{{ ssh_key_dir }}/{{ key_name }}"
+          vault_ci_ssh_public_key_path: "{{ ssh_key_dir }}/{{ key_name }}.pub"
+        create: yes
+        mode: '0600'
+        
+    - name: Display success message
+      debug:
+        msg:
+          - "✅ SSH keys generated and merged with vault configuration"
+          - "Key location: {{ ssh_key_dir }}/{{ key_name }}"
+          - "Vault file updated: {{ vault_file }}"

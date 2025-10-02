@@ -86,6 +86,17 @@ pipeline {
                 }
             }
         }
+
+        stage('🔐 Generate SSH Keys') {
+            steps {
+                echo "🔐 Generating SSH keys..."
+                sh """
+                    cd ${WORKSPACE_DIR}
+                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                        playbooks/00.proxmox_k8s_generate_ssh_keys.yml
+                """
+            }
+        }
         
         stage('🏗️ Infrastructure Setup') {
             steps {
