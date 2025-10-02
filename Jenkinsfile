@@ -92,6 +92,7 @@ pipeline {
                 echo "🔐 Generating SSH keys..."
                 sh """
                     cd ${WORKSPACE_DIR}
+                    export SSH_KEY_DIR=${WORKSPACE_DIR}/.ssh
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
                         playbooks/00.proxmox_k8s_generate_ssh_keys_merge.yml
                 """
