@@ -93,7 +93,7 @@ pipeline {
                 sh """
                     cd ${WORKSPACE_DIR}
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        playbooks/00.proxmox_k8s_generate_ssh_keys.yml
+                        playbooks/00.proxmox_k8s_generate_ssh_keys_merge.yml
                 """
             }
         }
