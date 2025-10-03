@@ -1,0 +1,2 @@
+[proxmox]
+{{ vault_proxmox_host }} ansible_user={{ vault_proxmox_user }} ansible_password={{ lookup('env','PROXMOX_PASS') }}

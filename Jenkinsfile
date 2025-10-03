@@ -7,11 +7,6 @@ pipeline {
             defaultValue: true,
             description: 'Deploy full cluster (master + workers) or single node only'
         )
-        choice(
-            name: 'ANSIBLE_VERBOSITY',
-            choices: ['-v', '-vv', '-vvv', ''],
-            description: 'Ansible verbosity level'
-        )
         credentials(
             name: 'VAULT_FILE_CREDENTIAL',
             credentialType: 'org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl',
@@ -27,7 +22,6 @@ pipeline {
     
     environment {
         ANSIBLE_HOST_KEY_CHECKING = 'False'
-        ANSIBLE_STDOUT_CALLBACK = 'yaml'
         WORKSPACE_DIR = "${WORKSPACE}"
         K8S_INVENTORY = "${WORKSPACE_DIR}/inventory/k8s_vms.ini"
         PROXMOX_INVENTORY = "${WORKSPACE_DIR}/inventory/proxmox.ini"
@@ -56,12 +50,7 @@ pipeline {
                             echo "❌ Playbooks directory not found"
                             exit 1
                         fi
-                        
-                        # if [ ! -f "${WORKSPACE_DIR}/group_vars/vault.yml" ]; then
-                        #     echo "❌ Vault file not found"
-                        #     exit 1
-                        # fi
-                        
+                                              
                         echo "✅ Workspace structure validated"
                     '''
                 }
@@ -113,34 +102,22 @@ pipeline {
                     }
                 }
                 sh """
-                    cd ${WORKSPACE_DIR}
-                    
-                    # Install sshpass if not available
-                    echo "📦 Installing sshpass for password authentication..."
-                    if ! command -v sshpass &> /dev/null; then
-                        if command -v apt-get &> /dev/null; then
-                            sudo apt-get update && sudo apt-get install -y sshpass
-                        elif command -v yum &> /dev/null; then
-                            sudo yum install -y sshpass
-                        elif command -v dnf &> /dev/null; then
-                            sudo dnf install -y sshpass
-                        else
-                            echo "❌ Cannot install sshpass: package manager not found"
-                            exit 1
-                        fi
-                    else
-                        echo "✅ sshpass already installed"
-                    fi
-                    
-                    # Generate configurations first (needed for inventory)
-                    echo "📋 Generating inventory and configurations..."
+                                        
+                    # Generate configurations with password authentication (needed for inventory)
+                    echo "📋 Generating inventory and configurations with password authentication..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        playbooks/01.proxmox_k8s_generate_configs.yml \
+                        playbooks/01a.proxmox_k8s_generate_configs_with_password.yml \
                         -e "include_workers=${params.FULL_CLUSTER}"
                     
                     # Install SSH key using ssh-copy-id
                     echo "🔑 Installing public key on Proxmox using ssh-copy-id..."
                     sshpass -p '${params.PROXMOX_PASSWORD}' ssh-copy-id -o StrictHostKeyChecking=no -i ${WORKSPACE_DIR}/.ssh/jenkins_infra_key.pub root@proxmox.laz
+                    
+                    # Regenerate configurations with SSH key authentication
+                    echo "🔄 Regenerating configurations with SSH key authentication..."
+                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                        playbooks/01b.proxmox_k8s_generate_configs_with_key.yml \
+                        -e "include_workers=${params.FULL_CLUSTER}"
                 """
             }
         }
@@ -151,11 +128,9 @@ pipeline {
                 sh """
                     cd ${WORKSPACE_DIR}
                     
-                    # Generate configurations
-                    echo "📋 Generating inventory and configurations..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        playbooks/01.proxmox_k8s_generate_configs.yml \
-                        -e "include_workers=${params.FULL_CLUSTER}"
+                    # Generate configurations (should already be done with SSH key auth from previous stage)
+                    echo "📋 Using existing configurations with SSH key authentication..."
+                    # Note: Configurations are already generated with SSH key auth in the previous stage
                     
                     # Create cloud template
                     echo "☁️ Creating VM template..."

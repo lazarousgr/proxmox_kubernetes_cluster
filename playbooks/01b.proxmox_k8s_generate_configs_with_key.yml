@@ -1,0 +1,15 @@
+---
+- name: Generate configuration files from templates (SSH Key Authentication)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vault.yml
+  
+  tasks: 
+    - name: Generate proxmox inventory from SSH key template  
+      ansible.builtin.template:
+        src: ../templates/inventory/proxmox.ini_with_ssh_key.j2
+        dest: ../inventory/proxmox.ini
+        mode: '0644'
+      register: proxmox_inventory
