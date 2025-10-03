@@ -91,13 +91,20 @@
     - name: Add cloud-init drive
       ansible.builtin.shell: qm set {{ template_vm_id }} --ide0 {{ storage }}:cloudinit
 
+    
+
+    - name: Read SSH public key content
+      ansible.builtin.slurp:
+        src: "{{ ci_ssh_public_key_path }}"
+      register: ssh_public_key_content
+      delegate_to: localhost
+    
     - name: Set cloud-init details
       ansible.builtin.shell: >
-        qm set {{ template_vm_id }} --ciuser {{ ci_user }} --cipassword {{ ci_password }} --sshkey {{ ci_ssh_public_key_path }} --ipconfig0 ip=dhcp
+        qm set {{ template_vm_id }} --ciuser {{ ci_user }} --cipassword {{ ci_password }} --sshkey "{{ ssh_public_key_content.content | b64decode }}" --ipconfig0 ip=dhcp
 
     - name: Convert VM to template
       ansible.builtin.shell: qm template {{ template_vm_id }}
-
     - name: Clean up downloaded cloud image file
       ansible.builtin.file:
         path: "/root/{{ extracted_image_file }}"
