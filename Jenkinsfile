@@ -98,6 +98,27 @@ pipeline {
                 """
             }
         }
+
+        stage('🔑 Install SSH Keys on Proxmox') {
+            steps {
+                echo "🔑 Installing SSH keys on Proxmox host..."
+                sh """
+                    cd ${WORKSPACE_DIR}
+                    
+                    # Generate configurations first (needed for inventory)
+                    echo "📋 Generating inventory and configurations..."
+                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                        playbooks/01.proxmox_k8s_generate_configs.yml \
+                        -e "include_workers=${params.FULL_CLUSTER}"
+                    
+                    # Install SSH key on Proxmox host
+                    echo "🔑 Installing public key on Proxmox..."
+                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                        -i ${PROXMOX_INVENTORY} \
+                        playbooks/00.proxmox_k8s_install_ssh_keys.yml
+                """
+            }
+        }
         
         stage('🏗️ Infrastructure Setup') {
             steps {

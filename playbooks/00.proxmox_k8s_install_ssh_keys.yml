@@ -1,0 +1,27 @@
+---
+- name: Install generated public key into Proxmox authorized_keys
+  hosts: proxmox
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vault.yml
+  vars:
+    # Use password auth if key auth fails, with proper SSH options
+    ansible_ssh_common_args: '-o PreferredAuthentications=password,publickey -o PubkeyAuthentication=yes -o StrictHostKeyChecking=no'
+
+  tasks:
+    - name: Ensure Proxmox user has the generated public key authorized
+      ansible.builtin.authorized_key:
+        user: "{{ vault_proxmox_user }}"
+        key: "{{ lookup('file', vault_ssh_public_key_path) }}"
+        state: present
+        manage_dir: yes
+        exclusive: no
+      register: key_install_result
+
+    - name: Display key installation result
+      ansible.builtin.debug:
+        msg:
+          - "✅ Public key successfully installed on Proxmox host"
+          - "User: {{ vault_proxmox_user }}"
+          - "Key file: {{ vault_ssh_public_key_path }}"
+          - "Status: {{ 'Changed' if key_install_result.changed else 'Already present' }}"
