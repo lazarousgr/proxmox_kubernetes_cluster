@@ -5,8 +5,8 @@
   vars_files:
     - ../group_vars/vault.yml
   vars:
-    # Use password auth if key auth fails, with proper SSH options
-    ansible_ssh_common_args: '-o PreferredAuthentications=password,publickey -o PubkeyAuthentication=yes -o StrictHostKeyChecking=no'
+    # Force password authentication for initial key installation
+    ansible_ssh_common_args: '-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no'cat 
 
   tasks:
     - name: Ensure Proxmox user has the generated public key authorized

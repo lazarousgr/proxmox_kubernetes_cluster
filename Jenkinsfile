@@ -18,6 +18,11 @@ pipeline {
             description: 'Vault configuration file',
             required: true
         )
+        password(
+            name: 'PROXMOX_PASSWORD',
+            description: 'Proxmox root password for initial SSH key installation',
+            defaultValue: ''
+        )
     }
     
     environment {
@@ -115,7 +120,8 @@ pipeline {
                     echo "🔑 Installing public key on Proxmox..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
                         -i ${PROXMOX_INVENTORY} \
-                        playbooks/00.proxmox_k8s_install_ssh_keys.yml
+                        playbooks/00.proxmox_k8s_install_ssh_keys.yml \
+                        -e "ansible_ssh_pass='${params.PROXMOX_PASSWORD}'"
                 """
             }
         }
