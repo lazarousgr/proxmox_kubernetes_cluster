@@ -6,7 +6,7 @@
     - ../group_vars/vault.yml
   vars:
     # Force password authentication for initial key installation
-    ansible_ssh_common_args: '-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no'cat 
+    ansible_ssh_common_args: '-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no'
 
   tasks:
     - name: Ensure Proxmox user has the generated public key authorized
