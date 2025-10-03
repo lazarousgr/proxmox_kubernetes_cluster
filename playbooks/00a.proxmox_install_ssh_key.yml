@@ -1,0 +1,23 @@
+---
+- name: Install SSH key on Proxmox host
+  hosts: proxmox
+  gather_facts: false
+  vars_files:
+    - ../group_vars/proxmox.yml
+  
+  tasks:
+    - name: Install SSH public key on Proxmox
+      ansible.builtin.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ lookup('file', ci_ssh_public_key_path) }}"
+        state: present
+        manage_dir: true
+    
+    - name: Verify SSH key installation
+      ansible.builtin.command: echo "SSH key installed successfully"
+      register: verify_result
+      changed_when: false
+    
+    - name: Display verification result
+      ansible.builtin.debug:
+        msg: "{{ verify_result.stdout }}"

@@ -5,3 +5,7 @@ service_subnet: {{ service_subnet | default('10.96.0.0/12') }}
 
 # Deployment Mode
 deployment_mode: {{ 'full-cluster' if include_workers | default(true) | bool else 'single-node' }}
+
+# SSH Key Configuration
+ssh_private_key_path: "{{ vault_ssh_private_key_path }}"
+ssh_public_key_path: "{{ vault_ci_ssh_public_key_path }}"

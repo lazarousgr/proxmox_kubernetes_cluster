@@ -102,16 +102,19 @@ pipeline {
                     }
                 }
                 sh """
-                                        
+                    cd ${WORKSPACE_DIR}
+                    
                     # Generate configurations with password authentication (needed for inventory)
                     echo "📋 Generating inventory and configurations with password authentication..."
                     ansible-playbook ${params.ANSIBLE_VERBOSITY} \
                         playbooks/01a.proxmox_k8s_generate_configs_with_password.yml \
                         -e "include_workers=${params.FULL_CLUSTER}"
                     
-                    # Install SSH key using ssh-copy-id
-                    echo "🔑 Installing public key on Proxmox using ssh-copy-id..."
-                    sshpass -p '${params.PROXMOX_PASSWORD}' ssh-copy-id -o StrictHostKeyChecking=no -i ${WORKSPACE_DIR}/.ssh/jenkins_infra_key.pub root@proxmox.laz
+                    # Install SSH key using Ansible
+                    echo "🔑 Installing public key on Proxmox using Ansible..."
+                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                        -i ${PROXMOX_INVENTORY} \
+                        playbooks/00a.proxmox_install_ssh_key.yml
                     
                     # Regenerate configurations with SSH key authentication
                     echo "🔄 Regenerating configurations with SSH key authentication..."
