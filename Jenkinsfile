@@ -34,7 +34,7 @@ pipeline {
                 script {
                     echo "🚀 Starting Kubernetes Cluster Deployment"
                     echo "Full Cluster Mode: ${params.FULL_CLUSTER}"
-                    echo "Ansible Verbosity: ${params.ANSIBLE_VERBOSITY}"
+                    echo "Ansible Verbosity: "
                     
                     // Validate vault file credential
                     if (!params.VAULT_FILE_CREDENTIAL) {
@@ -87,7 +87,7 @@ pipeline {
                 sh """
                     cd ${WORKSPACE_DIR}
                     export SSH_KEY_DIR=${WORKSPACE_DIR}/.ssh
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         playbooks/00.proxmox_k8s_generate_ssh_keys_merge.yml
                 """
             }
@@ -106,19 +106,19 @@ pipeline {
                     
                     # Generate configurations with password authentication (needed for inventory)
                     echo "📋 Generating inventory and configurations with password authentication..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         playbooks/01a.proxmox_k8s_generate_configs_with_password.yml \
                         -e "include_workers=${params.FULL_CLUSTER}"
                     
                     # Install SSH key using Ansible
                     echo "🔑 Installing public key on Proxmox using Ansible..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${PROXMOX_INVENTORY} \
                         playbooks/00a.proxmox_install_ssh_key.yml
                     
                     # Regenerate configurations with SSH key authentication
                     echo "🔄 Regenerating configurations with SSH key authentication..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         playbooks/01b.proxmox_k8s_generate_configs_with_key.yml \
                         -e "include_workers=${params.FULL_CLUSTER}"
                 """
@@ -137,20 +137,20 @@ pipeline {
                     
                     # Create cloud template
                     echo "☁️ Creating VM template..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${PROXMOX_INVENTORY} \
                         playbooks/02.proxmox_k8s_create_vm_template.yml
                     
                     # Clone VMs
                     echo "🖥️ Cloning VMs..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${PROXMOX_INVENTORY} \
                         -i ${K8S_INVENTORY} \
                         playbooks/03.proxmox_k8s_clone_vms.yml
                     
                     # Start VMs
                     echo "🚀 Starting VMs..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${PROXMOX_INVENTORY} \
                         -i ${K8S_INVENTORY} \
                         playbooks/04.proxmox_k8s_start_vms.yml
@@ -165,17 +165,17 @@ pipeline {
                     cd ${WORKSPACE_DIR}
                     
                     # System preparation (swap, sysctl, modules)
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/06.proxmox_k8s_os_prep.yml
                     
                     # Configure hostnames
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/05.proxmox_k8s_vms_hostname.yml
                     
                     # Install Docker/containerd
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/07.proxmox_k8s_docker_install.yml
                 '''
@@ -191,11 +191,11 @@ pipeline {
                 sh '''
                     cd ${WORKSPACE_DIR}
                     # Install Kubernetes repository
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/08.proxmox_k8s_kube_repo.yml
                     # Install Kubernetes tools
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/09.proxmox_k8s_tools_setup.yml
                 '''
@@ -209,7 +209,7 @@ pipeline {
                 echo "🎮 Initializing Kubernetes cluster..."
                 sh '''
                     cd ${WORKSPACE_DIR}
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/10.proxmox_k8s_cluster_init.yml
                 '''
@@ -223,7 +223,7 @@ pipeline {
                 echo "🌐 Installing CNI..."
                 sh '''
                     cd ${WORKSPACE_DIR}
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/11.proxmox_k8s_cni_install.yml
                 '''
@@ -237,7 +237,7 @@ pipeline {
                 echo "👥 Joining worker nodes..."
                 sh '''
                     cd ${WORKSPACE_DIR}
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${K8S_INVENTORY} \
                         playbooks/12.proxmox_k8s_workers_join.yml
                 '''
@@ -263,7 +263,7 @@ pipeline {
                 echo "🔄 Restarting all VMs..."
                 sh '''
                     cd ${WORKSPACE_DIR}
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
+                    ansible-playbook  \
                         -i ${PROXMOX_INVENTORY} \
                         -i ${K8S_INVENTORY} \
                         playbooks/13.proxmox_k8s_restart_vms.yml
