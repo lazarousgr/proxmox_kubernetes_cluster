@@ -107,8 +107,30 @@ pipeline {
         stage('🔑 Install SSH Keys on Proxmox') {
             steps {
                 echo "🔑 Installing SSH keys on Proxmox host..."
+                script {
+                    if (!params.PROXMOX_PASSWORD) {
+                        error "❌ PROXMOX_PASSWORD parameter is required for initial SSH key installation"
+                    }
+                }
                 sh """
                     cd ${WORKSPACE_DIR}
+                    
+                    # Install sshpass if not available
+                    echo "📦 Installing sshpass for password authentication..."
+                    if ! command -v sshpass &> /dev/null; then
+                        if command -v apt-get &> /dev/null; then
+                            sudo apt-get update && sudo apt-get install -y sshpass
+                        elif command -v yum &> /dev/null; then
+                            sudo yum install -y sshpass
+                        elif command -v dnf &> /dev/null; then
+                            sudo dnf install -y sshpass
+                        else
+                            echo "❌ Cannot install sshpass: package manager not found"
+                            exit 1
+                        fi
+                    else
+                        echo "✅ sshpass already installed"
+                    fi
                     
                     # Generate configurations first (needed for inventory)
                     echo "📋 Generating inventory and configurations..."
@@ -116,12 +138,9 @@ pipeline {
                         playbooks/01.proxmox_k8s_generate_configs.yml \
                         -e "include_workers=${params.FULL_CLUSTER}"
                     
-                    # Install SSH key on Proxmox host
-                    echo "🔑 Installing public key on Proxmox..."
-                    ansible-playbook ${params.ANSIBLE_VERBOSITY} \
-                        -i ${PROXMOX_INVENTORY} \
-                        playbooks/00.proxmox_k8s_install_ssh_keys.yml \
-                        -e "ansible_ssh_pass='${params.PROXMOX_PASSWORD}'"
+                    # Install SSH key using ssh-copy-id
+                    echo "🔑 Installing public key on Proxmox using ssh-copy-id..."
+                    sshpass -p '${params.PROXMOX_PASSWORD}' ssh-copy-id -o StrictHostKeyChecking=no -i ${WORKSPACE_DIR}/.ssh/jenkins_infra_key.pub root@proxmox.laz
                 """
             }
         }
