@@ -99,9 +99,20 @@
       register: ssh_public_key_content
       delegate_to: localhost
     
+    - name: Create temporary SSH key file on Proxmox
+      ansible.builtin.copy:
+        content: "{{ ssh_public_key_content.content | b64decode }}"
+        dest: "/tmp/ssh_key.pub"
+        mode: '0644'
+    
     - name: Set cloud-init details
-      ansible.builtin.shell: >
-        qm set {{ template_vm_id }} --ciuser {{ ci_user }} --cipassword {{ ci_password }} --sshkey "{{ ssh_public_key_content.content | b64decode }}" --ipconfig0 ip=dhcp
+      ansible.builtin.shell: |
+        qm set {{ template_vm_id }} --ciuser {{ ci_user }} --cipassword {{ ci_password }} --sshkey /tmp/ssh_key.pub --ipconfig0 ip=dhcp
+    
+    - name: Clean up temporary SSH key file
+      ansible.builtin.file:
+        path: "/tmp/ssh_key.pub"
+        state: absent
 
     - name: Convert VM to template
       ansible.builtin.shell: qm template {{ template_vm_id }}
