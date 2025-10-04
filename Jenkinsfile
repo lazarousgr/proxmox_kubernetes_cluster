@@ -21,7 +21,6 @@ pipeline {
     }
     
     environment {
-        ANSIBLE_HOST_KEY_CHECKING = 'False'
         WORKSPACE_DIR = "${WORKSPACE}"
         K8S_INVENTORY = "${WORKSPACE_DIR}/inventory/k8s_vms.ini"
         PROXMOX_INVENTORY = "${WORKSPACE_DIR}/inventory/proxmox.ini"
@@ -33,24 +32,20 @@ pipeline {
             steps {
                 script {
                     echo "🚀 Starting Kubernetes Cluster Deployment"
-                    echo "Full Cluster Mode: ${params.FULL_CLUSTER}"
-                    echo "Ansible Verbosity: "
+                    echo "📋 Configuration:"
+                    echo "   • Full Cluster Mode: ${params.FULL_CLUSTER}"
                     
                     // Validate vault file credential
                     if (!params.VAULT_FILE_CREDENTIAL) {
                         error "❌ VAULT_FILE_CREDENTIAL parameter is required"
                     }
                     
-                    // Check workspace and inventory files
+                    // Check workspace structure
                     sh '''
-                        echo "📂 Checking workspace structure..."
-                        ls -la ${WORKSPACE_DIR}/
-                        
                         if [ ! -d "${WORKSPACE_DIR}/playbooks" ]; then
                             echo "❌ Playbooks directory not found"
                             exit 1
                         fi
-                                              
                         echo "✅ Workspace structure validated"
                     '''
                 }
@@ -59,43 +54,30 @@ pipeline {
         
         stage('🔐 Extract Vault Configuration') {
             steps {
-                script {
-                    echo "🔐 Extracting vault configuration from Jenkins..."
-                    withCredentials([file(credentialsId: params.VAULT_FILE_CREDENTIAL, variable: 'VAULT_FILE_PATH')]) {
-                        sh '''
-                            cd ${WORKSPACE_DIR}
-                            
-                            # Create group_vars directory if it doesn't exist
-                            mkdir -p group_vars
-                            
-                            # Copy vault file from Jenkins credential
-                            cp ${VAULT_FILE_PATH} ${VAULT_FILE}
-                            
-                            # Set secure permissions
-                            chmod 600 ${VAULT_FILE}
-                            
-                            echo "✅ Vault configuration extracted successfully"
-                        '''
-                    }
+                withCredentials([file(credentialsId: params.VAULT_FILE_CREDENTIAL, variable: 'VAULT_FILE_PATH')]) {
+                    sh '''
+                        cd ${WORKSPACE_DIR}
+                        mkdir -p group_vars
+                        cp ${VAULT_FILE_PATH} ${VAULT_FILE}
+                        chmod 600 ${VAULT_FILE}
+                        echo "✅ Vault configuration extracted"
+                    '''
                 }
             }
         }
 
         stage('🔐 Generate SSH Keys') {
             steps {
-                echo "🔐 Generating SSH keys..."
                 sh """
                     cd ${WORKSPACE_DIR}
                     export SSH_KEY_DIR=${WORKSPACE_DIR}/.ssh
-                    ansible-playbook  \
-                        playbooks/00.proxmox_k8s_generate_ssh_keys_merge.yml
+                    ansible-playbook playbooks/00.proxmox_k8s_generate_ssh_keys_merge.yml
                 """
             }
         }
 
         stage('🔑 Install SSH Keys on Proxmox') {
             steps {
-                echo "🔑 Installing SSH keys on Proxmox host..."
                 script {
                     if (!params.PROXMOX_PASSWORD) {
                         error "❌ PROXMOX_PASSWORD parameter is required for initial SSH key installation"
@@ -127,13 +109,8 @@ pipeline {
         
         stage('🏗️ Infrastructure Setup') {
             steps {
-                echo "🏗️ Setting up infrastructure..."
                 sh """
                     cd ${WORKSPACE_DIR}
-                    
-                    # Generate configurations (should already be done with SSH key auth from previous stage)
-                    echo "📋 Using existing configurations with SSH key authentication..."
-                    # Note: Configurations are already generated with SSH key auth in the previous stage
                     
                     # Create cloud template
                     echo "☁️ Creating VM template..."
@@ -160,7 +137,6 @@ pipeline {
         
         stage('⚙️ System Preparation') {
             steps {
-                echo "⚙️ Preparing systems for Kubernetes..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     
@@ -182,12 +158,11 @@ pipeline {
             }
         }
         
-        stage('☸️ Kubernetes Installation') {
+        stage('☸️ Kubernetes componentas installation') {
             when {
                 expression { params.FULL_CLUSTER == true }
             }
             steps {
-                echo "☸️ Installing Kubernetes components..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     # Install Kubernetes repository
@@ -206,7 +181,6 @@ pipeline {
                 expression { params.FULL_CLUSTER == true }
             }
             steps {
-                echo "🎮 Initializing Kubernetes cluster..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook  \
@@ -215,12 +189,11 @@ pipeline {
                 '''
             }
         }
-        stage('🌐 Network Setup') {
+        stage('🌐 Kubernetes network Setup') {
             when {
                 expression { params.FULL_CLUSTER == true }
             }
             steps {
-                echo "🌐 Installing CNI..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook  \
@@ -229,12 +202,11 @@ pipeline {
                 '''
             }
         }
-        stage('👥 Worker Nodes') {
+        stage('👥 Joining Worker Nodes') {
             when {
                 expression { params.FULL_CLUSTER == true }
             }
             steps {
-                echo "👥 Joining worker nodes..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook  \
@@ -243,12 +215,11 @@ pipeline {
                 '''
             }
         }
-        stage('✅ Cluster Validation') {
+        stage('✅ Validating cluster setup') {
             when {
                 expression { params.FULL_CLUSTER == true }
             }
             steps {
-                echo "✅ Validating cluster setup..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     echo "Checking cluster status..."
@@ -260,7 +231,6 @@ pipeline {
         }
         stage('🔄 VM Restart') {
             steps {
-                echo "🔄 Restarting all VMs..."
                 sh '''
                     cd ${WORKSPACE_DIR}
                     ansible-playbook  \
